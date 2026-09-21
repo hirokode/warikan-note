@@ -85,6 +85,10 @@
   .pick { border: 1px solid var(--line); background: #fff; border-radius: 11px; padding: 9px 14px; font: inherit; font-size: 14px; cursor: pointer; color: var(--ink); }
   .pick.on { background: var(--ink); border-color: var(--ink); color: #fff; }
   .pick.add { border-style: dashed; color: var(--sub); }
+  .pick.more { border-color: var(--line); background: #EDF0F3; color: var(--sub); font-weight: 700; }
+  .filter-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 8px 0 10px; }
+  .filter-box { border: 1px solid var(--line); background: #fff; border-radius: 11px; padding: 9px 2px; font: inherit; font-size: 13px; font-weight: 700; text-align: center; cursor: pointer; color: var(--ink); }
+  .filter-box.on { background: var(--ink); border-color: var(--ink); color: #fff; }
   .seg { display: flex; background: #EDF0F3; border-radius: 12px; padding: 3px; }
   .seg button { flex: 1; border: none; background: none; font: inherit; font-size: 14px; padding: 9px 0; border-radius: 9px; color: var(--sub); cursor: pointer; }
   .seg button.on { background: #fff; color: var(--ink); font-weight: 700; }
@@ -152,12 +156,14 @@
 const STATUSES = ['社会人', '学生'];
 const GENDERS = ['男', '女'];
 const FILTERS = [...STATUSES, ...GENDERS, '属性なし'];   // 人員プールの絞り込み候補
+const ATTR_BOXES = ['社会人', '学生', '男', '女'];
 
 let DATA = { members: [], advances: [] };
 let TAB = 'owed';
 const openPeople = new Set();
 let form = null;        // 登録フォームの入力状態
 let editing = null;     // メンバー編集中の状態
+let showAllMembers = false; // メンバー一覧の全件表示フラグ
 
 const yen = n => '¥' + Number(n || 0).toLocaleString('ja-JP');
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -248,7 +254,7 @@ const scrollTop = () => { const v = document.getElementById('view'); if (v) v.sc
 
 function newForm() {
   return { id: null, date: today(), title: '', total: '', memo: '', picked: [],
-           filter: '', showGroup: false, includeMe: true, groupAmt: {}, amounts: {}, adding: null };
+           filter: '', showAllPool: false, showGroup: false, includeMe: true, groupAmt: {}, amounts: {}, adding: null };
 }
 // 既存の立替を、登録フォームに読み込んで編集状態にする
 function formFromAdvance(a) {
@@ -384,13 +390,13 @@ function renderAdd() {
     ${form.picked.length ? `<div class="picks" style="margin-bottom:10px">
       ${form.picked.map(x => `<button class="pick on" data-act="pick" data-name="${esc(x)}">${esc(x)} ×</button>`).join('')}
     </div>` : ''}
-    <select id="f-filter">
-      <option value="">すべて（${DATA.members.length}人）</option>
-      ${FILTERS.map(f => `<option value="${f}" ${form.filter === f ? 'selected' : ''}>${f}（${DATA.members.filter(m => matchOf(m, f)).length}人）</option>`).join('')}
-    </select>
-    <div class="picks" style="margin-top:8px">
-      ${pool.map(m => `<button class="pick ${form.picked.includes(m.name) ? 'on' : ''}" data-act="pick" data-name="${esc(m.name)}">${esc(m.name)}</button>`).join('')}
-      <button class="pick add" data-act="n-open">＋ 新しい人</button>
+    <div class="filter-grid">
+      ${ATTR_BOXES.map(b => `<button type="button" class="filter-box ${form.filter === b ? 'on' : ''}" data-act="f-box" data-v="${b}">${b}</button>`).join('')}
+    </div>
+    <div class="picks">
+      ${(form.showAllPool ? pool : pool.slice(0, 6)).map(m => `<button type="button" class="pick ${form.picked.includes(m.name) ? 'on' : ''}" data-act="pick" data-name="${esc(m.name)}">${esc(m.name)}</button>`).join('')}
+      ${pool.length > 6 ? `<button type="button" class="pick more" data-act="pool-toggle">${form.showAllPool ? '閉じる ▲' : `もっと開く（＋${pool.length - 6}人）▼`}</button>` : ''}
+      <button type="button" class="pick add" data-act="n-open">＋ 新しい人</button>
     </div>
     ${pool.length ? '' : '<p class="note">この絞り込みに当てはまる人がいません。</p>'}
     ${addBlock}
@@ -456,18 +462,24 @@ function renderMembers() {
     <p class="note">属性（区分や性別）は追加したあとに設定できます。</p>
   </div>
   <h2>登録済み（${DATA.members.length}人）</h2>
-  ${DATA.members.length ? '<div class="stack" id="m-list">' + DATA.members.map(m => m.name === (editing && editing.oldName) ? editRow(m) : `
-    <div class="card pad" data-member="${esc(m.name)}" style="padding:12px 14px">
-      <div class="row" style="margin:0">
-        <span class="handle" title="ドラッグで並べ替え">☰</span>
-        <span class="who"><b style="font-weight:700">${esc(m.name)}</b>
-          ${m.status ? `<span class="tag">${esc(m.status)}</span>` : ''}
-          ${m.gender ? `<span class="tag">${esc(m.gender)}</span>` : ''}
-          ${(!m.status && !m.gender) ? '<span class="tag">属性なし</span>' : ''}
-        </span>
-        <button class="btn" data-act="m-edit" data-name="${esc(m.name)}">編集</button>
-      </div>
-    </div>`).join('') + '</div><p class="note">☰ をつかんで上下にドラッグすると、並び順を変えられます。この順番が「回収する相手」の表示順になります。</p>' : '<div class="empty">まだ登録がありません。</div>'}`;
+  ${DATA.members.length ? (() => {
+    const list = showAllMembers ? DATA.members : DATA.members.slice(0, 5);
+    const hasMore = DATA.members.length > 5;
+    return '<div class="stack" id="m-list">' + list.map(m => m.name === (editing && editing.oldName) ? editRow(m) : `
+      <div class="card pad" data-member="${esc(m.name)}" style="padding:12px 14px">
+        <div class="row" style="margin:0">
+          <span class="handle" title="ドラッグで並べ替え">☰</span>
+          <span class="who"><b style="font-weight:700">${esc(m.name)}</b>
+            ${m.status ? `<span class="tag">${esc(m.status)}</span>` : ''}
+            ${m.gender ? `<span class="tag">${esc(m.gender)}</span>` : ''}
+            ${(!m.status && !m.gender) ? '<span class="tag">属性なし</span>' : ''}
+          </span>
+          <button class="btn" data-act="m-edit" data-name="${esc(m.name)}">編集</button>
+        </div>
+      </div>`).join('') + '</div>'
+      + (hasMore ? `<button class="ghost" style="margin-top:10px" data-act="m-toggle">${showAllMembers ? '閉じる ▲' : `もっと開く（他 ${DATA.members.length - 5}人）▼`}</button>` : '')
+      + '<p class="note">☰ をつかんで上下にドラッグすると、並び順を変えられます。この順番が「回収する相手」の表示順になります。</p>';
+  })() : '<div class="empty">まだ登録がありません。</div>'}`;
 }
 
 function editRow(m) {
@@ -509,7 +521,6 @@ document.addEventListener('input', e => {
 document.addEventListener('change', e => {
   if (!form) return;
   if (e.target.id === 'f-me') { form.includeMe = e.target.checked; render(); }
-  if (e.target.id === 'f-filter') { form.filter = e.target.value; render(); }   // 人員プールの絞り込み
 });
 
 document.addEventListener('click', e => {
@@ -559,6 +570,13 @@ document.addEventListener('click', e => {
       break;
 
     // 登録フォーム
+    case 'f-box':
+      form.filter = form.filter === d.v ? '' : d.v;
+      form.showAllPool = false;
+      render(); break;
+    case 'pool-toggle':
+      form.showAllPool = !form.showAllPool;
+      render(); break;
     case 'pick':
       form.picked = form.picked.includes(d.name) ? form.picked.filter(x => x !== d.name) : [...form.picked, d.name];
       if (form.showGroup) applyGroup(groupOf(d.name));   // 金額は自動で入れない（空のまま）
@@ -626,6 +644,9 @@ document.addEventListener('click', e => {
     }
 
     // メンバー
+    case 'm-toggle':
+      showAllMembers = !showAllMembers;
+      render(); break;
     case 'm-add': {
       const name = (document.getElementById('m-name').value || '').trim();
       if (!name) { toast('名前を入力してください'); break; }
@@ -635,6 +656,7 @@ document.addEventListener('click', e => {
       break;
     }
     case 'm-edit': {
+      showAllMembers = true;
       const m = member(d.name);
       editing = { oldName: m.name, name: m.name, status: m.status, gender: m.gender };
       render(); break;

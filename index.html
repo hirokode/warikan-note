@@ -36,25 +36,55 @@
   }
   h2 { font-size: 13px; color: var(--sub); font-weight: 500; margin: 22px 4px 10px; }
 
-  /* 上部の合計 */
-  .hero { background: var(--ink); color: #fff; border-radius: 20px; padding: 20px 22px 22px; }
-  .hero p { margin: 0; font-size: 13px; color: #9FB0BF; }
-  .hero .amt { font-size: 40px; font-weight: 900; letter-spacing: -0.03em; line-height: 1.15; margin-top: 2px; }
-  .hero .from { font-size: 13px; color: #9FB0BF; margin-top: 4px; }
+  /* 上部の未回収サマリー */
+  .summary-card {
+    background: #FFFFFF; border: 1px solid var(--line); border-radius: 20px;
+    padding: 18px 20px; box-shadow: 0 4px 16px rgba(16, 32, 46, 0.04); margin-bottom: 14px;
+  }
+  .summary-card .head { display: flex; justify-content: space-between; align-items: center; }
+  .summary-card .title { font-size: 13px; font-weight: 700; color: var(--sub); }
+  .summary-card .amt { font-size: 34px; font-weight: 900; letter-spacing: -0.02em; color: var(--owed); line-height: 1.15; margin: 4px 0 2px; }
+  .summary-card .sub-stats { display: flex; gap: 12px; font-size: 12px; color: var(--sub); margin-top: 4px; }
+
+  /* カレンダー */
+  .cal-card {
+    background: #FFFFFF; border: 1px solid var(--line); border-radius: 20px;
+    padding: 16px 14px 14px; box-shadow: 0 4px 16px rgba(16, 32, 46, 0.04);
+  }
+  .cal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding: 0 4px; }
+  .cal-title { font-size: 16px; font-weight: 700; color: var(--ink); }
+  .cal-nav { display: flex; align-items: center; gap: 6px; }
+  .cal-nav-btn {
+    border: 1px solid var(--line); background: #FAFBFC; border-radius: 9px;
+    width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
+    cursor: pointer; font-size: 13px; color: var(--ink); font-weight: 700;
+  }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; text-align: center; }
+  .cal-dow { font-size: 11px; font-weight: 700; color: var(--sub); padding: 2px 0 6px; }
+  .cal-dow.sun { color: var(--owed); }
+  .cal-dow.sat { color: #2B6CB0; }
+  .cal-day {
+    aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    border-radius: 12px; cursor: pointer; position: relative; font-size: 14px; font-weight: 500;
+    transition: background .12s, color .12s; user-select: none;
+  }
+  .cal-day:hover { background: #F1F3F6; }
+  .cal-day.today { font-weight: 700; }
+  .cal-day.today::before {
+    content: ''; position: absolute; top: 4px; right: 4px; width: 4px; height: 4px;
+    border-radius: 50%; background: var(--done);
+  }
+  .cal-day.selected { background: var(--ink) !important; color: #fff !important; font-weight: 700; }
+  .cal-day.empty-day { cursor: default; pointer-events: none; }
+  .cal-dots { display: flex; gap: 2px; position: absolute; bottom: 4px; }
+  .cal-dot { width: 5px; height: 5px; border-radius: 50%; }
+  .cal-dot.owed { background: var(--owed); }
+  .cal-dot.done { background: var(--done); }
+  .cal-day.selected .cal-dot.owed { background: #FF9EBB; }
+  .cal-day.selected .cal-dot.done { background: #7CE0D3; }
 
   .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); }
   .stack > .card { margin-bottom: 10px; }
-
-  /* 人ごとの未回収 */
-  .person-head { display: flex; align-items: center; gap: 10px; padding: 15px 18px; cursor: pointer; }
-  .person-name { font-size: 17px; font-weight: 700; }
-  .person-head .amt { margin-left: auto; font-size: 20px; font-weight: 900; color: var(--owed); }
-  .caret { color: var(--sub); font-size: 11px; transition: transform .15s; }
-  .person.open .caret { transform: rotate(180deg); }
-  .person-body { display: none; padding: 2px 18px 16px; }
-  .person.open .person-body { display: block; }
-  .item { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 14px; }
-  .item span:first-child { color: var(--sub); }
 
   /* 立替一覧 */
   .adv { padding: 15px 18px; }
@@ -175,6 +205,9 @@ const openPeople = new Set();
 let form = null;        // 登録フォームの入力状態
 let editing = null;     // メンバー編集中の状態
 let showAllMembers = false; // メンバー一覧の全件表示フラグ
+let calYear = new Date().getFullYear();
+let calMonth = new Date().getMonth() + 1;
+let selectedDate = new Date().toLocaleDateString('sv-SE');
 
 const yen = n => '¥' + Number(n || 0).toLocaleString('ja-JP');
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -304,28 +337,117 @@ function render() {
 function renderOwed() {
   const owed = owedByPerson();
   const grand = owed.reduce((s, [, v]) => s + v.total, 0);
+  const unpaidCount = DATA.advances.reduce((cnt, a) => cnt + a.shares.filter(s => !s.paid).length, 0);
+  const paidCount = DATA.advances.reduce((cnt, a) => cnt + a.shares.filter(s => s.paid).length, 0);
+
   const hero = `
-    <div class="hero">
-      <p>まだ返ってきていないお金</p>
+    <div class="summary-card">
+      <div class="head">
+        <span class="title">まだ返ってきていないお金</span>
+        <span class="state ${grand === 0 ? 'done' : ''}">${owed.length ? owed.length + '人から回収予定' : '精算完了'}</span>
+      </div>
       <div class="amt">${yen(grand)}</div>
-      <div class="from">${owed.length ? owed.length + '人から回収予定' : '回収待ちはありません'}</div>
-    </div>`;
-  if (!owed.length) return hero + '<div class="empty">全部回収できています。<br>立て替えたら「＋登録」から追加してください。</div>';
-  return hero + '<h2>相手ごと</h2><div class="stack">' + owed.map(([name, v]) => {
-    const m = member(name);
-    const tag = (m.status || m.gender) ? `<span class="tag">${esc(m.status + m.gender)}</span>` : '';
-    return `
-    <div class="card person ${openPeople.has(name) ? 'open' : ''}">
-      <div class="person-head" data-act="toggle" data-name="${esc(name)}">
-        <span class="person-name">${esc(name)}</span>${tag}
-        <span class="amt">${yen(v.total)}</span><span class="caret">▼</span>
-      </div>
-      <div class="person-body">
-        ${v.items.map(i => `<div class="item"><span>${i.adv.date.slice(5).replace('-', '/')}　${esc(i.adv.title)}</span><span>${yen(i.share.amount)}</span></div>`).join('')}
-        <button class="ghost accent" data-act="payall" data-ids="${v.items.map(i => i.share.id).join(',')}" data-name="${esc(name)}">${esc(name)}から全額受け取った</button>
+      <div class="sub-stats">
+        <span>未回収 ${unpaidCount}件</span>
+        <span>回収済み ${paidCount}件</span>
       </div>
     </div>`;
-  }).join('') + '</div>';
+
+  const daysInMonth = new Date(calYear, calMonth, 0).getDate();
+  const firstDow = new Date(calYear, calMonth - 1, 1).getDay(); // 0: Sun
+  const nowStr = today();
+  const isCurMonth = (calYear === Number(nowStr.slice(0, 4)) && calMonth === Number(nowStr.slice(5, 7)));
+
+  let gridHtml = '';
+  for (let i = 0; i < firstDow; i++) {
+    gridHtml += '<div class="cal-day empty-day"></div>';
+  }
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dStr = String(d).padStart(2, '0');
+    const mStr = String(calMonth).padStart(2, '0');
+    const dateStr = `${calYear}-${mStr}-${dStr}`;
+    const isToday = (dateStr === nowStr);
+    const isSel = (dateStr === selectedDate);
+    const advs = DATA.advances.filter(a => a.date === dateStr);
+
+    let dotHtml = '';
+    if (advs.length > 0) {
+      const hasUnpaid = advs.some(a => a.shares.some(s => !s.paid));
+      dotHtml = `<div class="cal-dots"><span class="cal-dot ${hasUnpaid ? 'owed' : 'done'}"></span></div>`;
+    }
+
+    gridHtml += `
+      <div class="cal-day ${isSel ? 'selected' : ''} ${isToday ? 'today' : ''}" data-act="cal-select" data-date="${dateStr}">
+        <span>${d}</span>
+        ${dotHtml}
+      </div>`;
+  }
+
+  const calHtml = `
+    <div class="cal-card">
+      <div class="cal-header">
+        <div class="cal-title">${calYear}年 ${calMonth}月</div>
+        <div class="cal-nav">
+          ${!isCurMonth ? '<button type="button" class="btn" data-act="cal-today" style="padding:4px 8px; font-size:11px;">今月</button>' : ''}
+          <button type="button" class="cal-nav-btn" data-act="cal-prev" title="前月">◀</button>
+          <button type="button" class="cal-nav-btn" data-act="cal-next" title="翌月">▶</button>
+        </div>
+      </div>
+      <div class="cal-grid">
+        <div class="cal-dow sun">日</div>
+        <div class="cal-dow">月</div>
+        <div class="cal-dow">火</div>
+        <div class="cal-dow">水</div>
+        <div class="cal-dow">木</div>
+        <div class="cal-dow">金</div>
+        <div class="cal-dow sat">土</div>
+        ${gridHtml}
+      </div>
+    </div>`;
+
+  const selAdvs = DATA.advances.filter(a => a.date === selectedDate);
+  const selD = new Date(selectedDate + 'T00:00:00');
+  const dows = ['日', '月', '火', '水', '木', '金', '土'];
+  const dowName = dows[selD.getDay()] || '';
+  const dateFormatted = `${Number(selectedDate.slice(5, 7))}月${Number(selectedDate.slice(8, 10))}日(${dowName})`;
+
+  const detailHeader = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin:20px 4px 10px;">
+      <h2 style="margin:0; font-size:15px; font-weight:700; color:var(--ink);">${dateFormatted} の立替</h2>
+      <button type="button" class="btn on" data-act="cal-add" data-date="${selectedDate}" style="padding:7px 13px; font-size:12px;">＋ この日に登録</button>
+    </div>`;
+
+  let detailBody = '';
+  if (selAdvs.length > 0) {
+    detailBody = '<div class="stack">' + selAdvs.map(a => {
+      const done = a.shares.every(s => s.paid);
+      const rest = a.shares.filter(s => !s.paid).reduce((x, s) => x + s.amount, 0);
+      return `
+      <div class="card adv" style="cursor:pointer;" data-act="cal-edit" data-id="${a.id}">
+        <div class="adv-top">
+          <div>
+            <div class="adv-title">${esc(a.title)} <span style="font-size:11px; color:var(--sub); font-weight:500;">(タップで編集)</span></div>
+            <div class="adv-meta">${a.total ? '総額' + yen(a.total) + '　' : ''}${a.headcount}人${a.memo ? '　' + esc(a.memo) : ''}</div>
+          </div>
+          <span class="state ${done ? 'done' : ''}">${done ? '回収済み' : '残 ' + yen(rest)}</span>
+        </div>
+        <div class="chips">
+          ${a.shares.map(s => `<button type="button" class="chip ${s.paid ? 'paid' : ''}" data-act="flip" data-id="${s.id}" data-paid="${s.paid}">${esc(s.person)}　${yen(s.amount)}</button>`).join('')}
+        </div>
+      </div>`;
+    }).join('') + '</div><p class="note">カードをタップすると編集、名前をタップすると回収済みを切り替えられます。</p>';
+  } else {
+    detailBody = `
+      <div class="card pad" style="text-align:center; padding:28px 16px; color:var(--sub); font-size:14px;">
+        この日の立替はありません。
+        <div style="margin-top:12px;">
+          <button type="button" class="btn" data-act="cal-add" data-date="${selectedDate}">＋ 立替を登録する</button>
+        </div>
+      </div>`;
+  }
+
+  return hero + calHtml + detailHeader + detailBody;
 }
 
 function renderList() {
@@ -552,7 +674,37 @@ document.addEventListener('click', e => {
   const d = el.dataset;
   switch (d.act) {
 
-    // 未回収
+    // カレンダー
+    case 'cal-prev':
+      calMonth--;
+      if (calMonth < 1) { calMonth = 12; calYear--; }
+      render(); break;
+    case 'cal-next':
+      calMonth++;
+      if (calMonth > 12) { calMonth = 1; calYear++; }
+      render(); break;
+    case 'cal-today': {
+      const now = new Date();
+      calYear = now.getFullYear();
+      calMonth = now.getMonth() + 1;
+      selectedDate = today();
+      render(); break;
+    }
+    case 'cal-select':
+      selectedDate = d.date;
+      render(); break;
+    case 'cal-add':
+      form = newForm();
+      form.date = d.date || selectedDate;
+      TAB = 'add';
+      render(); scrollTop(); break;
+    case 'cal-edit': {
+      const a = DATA.advances.find(x => x.id === d.id);
+      if (a) { form = formFromAdvance(a); TAB = 'add'; render(); scrollTop(); }
+      break;
+    }
+
+    // 未回収（互換用）
     case 'toggle':
       openPeople.has(d.name) ? openPeople.delete(d.name) : openPeople.add(d.name);
       render(); break;
@@ -664,6 +816,9 @@ document.addEventListener('click', e => {
           });
         }
         sortAdvances();
+        selectedDate = payload.date;
+        calYear = Number(payload.date.slice(0, 4));
+        calMonth = Number(payload.date.slice(5, 7));
         form = null; TAB = isEdit ? 'list' : 'owed';
       }, isEdit ? 'updateAdvance' : 'addAdvance', [payload], isEdit ? '保存しました' : '登録しました');
       break;

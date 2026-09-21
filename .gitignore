@@ -1,0 +1,8 @@
+# 秘密情報：スクリプトID・デプロイID・ウェブアプリURLを含むため管理外にする
+.clasp.json
+立替アプリURL.txt
+
+# Windows / OneDrive が作る一時ファイル
+Thumbs.db
+desktop.ini
+~$*

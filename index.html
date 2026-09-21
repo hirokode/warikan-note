@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #F1F3F6;
+    --card: #FFFFFF;
+    --ink: #10202E;
+    --sub: #6C7A88;
+    --line: #E4E8EC;
+    --owed: #A8365F;
+    --owed-soft: #FBEFF3;
+    --done: #0E7A6E;
+    --done-soft: #E4F2F0;
+    --r: 16px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", sans-serif;
+    font-variant-numeric: tabular-nums;
+    font-size: 15px; line-height: 1.6;
+    /* 画面の高さに固定し、中身だけをスクロールさせる（下のバーを動かさないため） */
+    height: 100vh; height: 100dvh;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  main {
+    flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding: 16px 14px 28px; max-width: 560px; width: 100%; margin: 0 auto;
+  }
+  h2 { font-size: 13px; color: var(--sub); font-weight: 500; margin: 22px 4px 10px; }
+
+  /* 上部の合計 */
+  .hero { background: var(--ink); color: #fff; border-radius: 20px; padding: 20px 22px 22px; }
+  .hero p { margin: 0; font-size: 13px; color: #9FB0BF; }
+  .hero .amt { font-size: 40px; font-weight: 900; letter-spacing: -0.03em; line-height: 1.15; margin-top: 2px; }
+  .hero .from { font-size: 13px; color: #9FB0BF; margin-top: 4px; }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); }
+  .stack > .card { margin-bottom: 10px; }
+
+  /* 人ごとの未回収 */
+  .person-head { display: flex; align-items: center; gap: 10px; padding: 15px 18px; cursor: pointer; }
+  .person-name { font-size: 17px; font-weight: 700; }
+  .person-head .amt { margin-left: auto; font-size: 20px; font-weight: 900; color: var(--owed); }
+  .caret { color: var(--sub); font-size: 11px; transition: transform .15s; }
+  .person.open .caret { transform: rotate(180deg); }
+  .person-body { display: none; padding: 2px 18px 16px; }
+  .person.open .person-body { display: block; }
+  .item { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 14px; }
+  .item span:first-child { color: var(--sub); }
+
+  /* 立替一覧 */
+  .adv { padding: 15px 18px; }
+  .adv-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+  .adv-title { font-weight: 700; }
+  .adv-meta { font-size: 12px; color: var(--sub); margin-top: 1px; }
+  .state { flex-shrink: 0; font-size: 13px; font-weight: 700; padding: 3px 11px; border-radius: 9px; background: var(--owed-soft); color: var(--owed); }
+  .state.done { background: var(--done-soft); color: var(--done); }
+  .chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+  .chip { border: 1px solid #EBC9D6; background: var(--owed-soft); color: var(--owed); border-radius: 10px; padding: 7px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+  .chip.paid { border-color: #C7E3DF; background: var(--done-soft); color: var(--done); text-decoration: line-through; text-decoration-thickness: 1px; }
+  .link { background: none; border: none; color: var(--sub); font: inherit; font-size: 13px; cursor: pointer; padding: 6px 0 0; }
+
+  /* 属性バッジ */
+  .tag { font-size: 11px; color: var(--sub); border: 1px solid var(--line); border-radius: 7px; padding: 1px 7px; }
+
+  /* フォーム部品 */
+  .pad { padding: 18px; }
+  label { display: block; font-size: 13px; color: var(--sub); margin: 16px 0 6px; }
+  .pad > label:first-child { margin-top: 0; }
+  input[type=text], input[type=number], input[type=date], select {
+    width: 100%; font: inherit; font-size: 16px; padding: 11px 13px;
+    border: 1px solid var(--line); border-radius: 11px; background: #FAFBFC; color: var(--ink);
+  }
+  select { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--sub) 50%), linear-gradient(135deg, var(--sub) 50%, transparent 50%); background-position: calc(100% - 19px) 21px, calc(100% - 13px) 21px; background-size: 6px 6px, 6px 6px; background-repeat: no-repeat; }
+  input:focus { background: #fff; border-color: var(--ink); outline: none; }
+  .picks { display: flex; flex-wrap: wrap; gap: 8px; }
+  .pick { border: 1px solid var(--line); background: #fff; border-radius: 11px; padding: 9px 14px; font: inherit; font-size: 14px; cursor: pointer; color: var(--ink); }
+  .pick.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .pick.add { border-style: dashed; color: var(--sub); }
+  .seg { display: flex; background: #EDF0F3; border-radius: 12px; padding: 3px; }
+  .seg button { flex: 1; border: none; background: none; font: inherit; font-size: 14px; padding: 9px 0; border-radius: 9px; color: var(--sub); cursor: pointer; }
+  .seg button.on { background: #fff; color: var(--ink); font-weight: 700; }
+  .row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+  .row .who { flex: 1; min-width: 0; }
+  .row .who b { font-weight: 500; }
+  .row input { width: 118px; text-align: right; }
+  .grp { background: #FAFBFC; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-top: 8px; }
+  .grp .head { display: flex; align-items: center; gap: 10px; }
+  .grp .head b { flex: 1; font-size: 14px; font-weight: 700; }
+  .grp .head input { width: 118px; text-align: right; }
+  .grp .who { font-size: 12px; color: var(--sub); margin-top: 6px; }
+  .check { display: flex; align-items: center; gap: 9px; margin-top: 14px; font-size: 14px; }
+  .check input { width: 19px; height: 19px; accent-color: var(--ink); }
+  .sum { font-size: 13px; color: var(--sub); margin-top: 12px; }
+  .sum b { color: var(--ink); }
+  .primary { width: 100%; margin-top: 18px; padding: 14px; border: none; border-radius: 13px; background: var(--ink); color: #fff; font: inherit; font-weight: 700; font-size: 16px; cursor: pointer; }
+  .ghost { width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; color: var(--ink); font: inherit; font-size: 14px; cursor: pointer; margin-top: 12px; }
+  .ghost.accent { border-color: #C7E3DF; background: var(--done-soft); color: var(--done); font-weight: 700; }
+  .ghost.danger { color: var(--owed); border-color: #EBC9D6; }
+  .inline { display: flex; gap: 8px; }
+  .inline .primary { margin-top: 0; width: auto; padding: 11px 18px; font-size: 15px; }
+  .empty { color: var(--sub); text-align: center; padding: 34px 16px; font-size: 14px; line-height: 1.9; }
+  .note { font-size: 12px; color: var(--sub); margin: 12px 6px 0; }
+
+  /* 操作ボタン（一覧の編集・削除、均等で割る など） */
+  .btn { border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 10px; padding: 9px 16px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+  .btn.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .btn.danger { border-color: #EBC9D6; background: var(--owed-soft); color: var(--owed); }
+  .acts { display: flex; gap: 8px; margin-top: 14px; }
+
+  /* メンバー並べ替えのつまみ */
+  .handle { cursor: grab; color: var(--sub); font-size: 17px; line-height: 1; padding: 6px 8px; margin-left: -4px; touch-action: none; user-select: none; }
+  .card.dragging { position: relative; z-index: 5; pointer-events: none; box-shadow: 0 10px 26px rgba(16,32,46,.20); }
+
+  nav { flex-shrink: 0; display: flex; background: #fff; border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
+  nav button { flex: 1; border: none; background: none; font: inherit; font-size: 13px; padding: 24px 0 26px; color: var(--sub); cursor: pointer; position: relative; }
+  nav button.on { color: var(--ink); font-weight: 700; }
+  nav button.on::before { content: ''; position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 30px; height: 3px; border-radius: 0 0 3px 3px; background: var(--ink); }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--done); outline-offset: 2px; }
+
+  #toast { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 96px); transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 12px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 86%; text-align: center; }
+  #toast.show { opacity: 1; }
+  /* 保存中だけ右上でくるくる回る小さな印 */
+  #loading { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); right: 12px; width: 15px; height: 15px; border-radius: 50%; border: 2px solid rgba(16,32,46,.13); border-top-color: var(--done); animation: spin .7s linear infinite; display: none; z-index: 9; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) {
+    #loading { animation: none; } .caret { transition: none; }
+    .card[data-member] { transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div id="loading"></div>
+<main id="view"></main>
+<nav>
+  <button data-tab="owed" class="on">未回収</button>
+  <button data-tab="list">立替一覧</button>
+  <button data-tab="add">＋登録</button>
+  <button data-tab="members">メンバー</button>
+</nav>
+<div id="toast"></div>
+
+<script>
+const STATUSES = ['社会人', '学生'];
+const GENDERS = ['男', '女'];
+const FILTERS = [...STATUSES, ...GENDERS, '属性なし'];   // 人員プールの絞り込み候補
+
+let DATA = { members: [], advances: [] };
+let TAB = 'owed';
+const openPeople = new Set();
+let form = null;        // 登録フォームの入力状態
+let editing = null;     // メンバー編集中の状態
+
+const yen = n => '¥' + Number(n || 0).toLocaleString('ja-JP');
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const today = () => new Date().toLocaleDateString('sv-SE');
+const member = name => DATA.members.find(m => m.name === name) || { name, status: '', gender: '' };
+const groupOf = name => {
+  const m = member(name);
+  return (m.status || m.gender) ? (m.status + m.gender) : '属性なし';
+};
+// 絞り込みプルダウンに当てはまるか（'' はすべて）
+const matchOf = (m, f) => !f ? true
+  : f === '属性なし' ? (!m.status && !m.gender)
+  : (m.status === f || m.gender === f);
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+function spin(on) {
+  const el = document.getElementById('loading');
+  if (el) el.style.display = on ? 'block' : 'none';
+}
+
+// 結果を待ってから画面を作るもの（最初の読み込み、エラーからの復帰）
+function call(fn, args, doneMsg, after) {
+  spin(true);
+  // 10秒返事がなければ「固まっている」ことを画面に出す（原因切り分け用）
+  const watchdog = setTimeout(() => toast(fn + ' からの応答がありません（10秒）'), 10000);
+  google.script.run
+    .withSuccessHandler(data => {
+      clearTimeout(watchdog);
+      spin(false);
+      DATA = data;
+      if (after) after();
+      render();
+      if (doneMsg) toast(doneMsg);
+    })
+    .withFailureHandler(err => {
+      clearTimeout(watchdog);
+      spin(false);
+      console.error('google.script.run ' + fn + ' failed:', err);
+      toast((err && err.message) ? err.message : String(err));
+    })[fn](...args);
+}
+
+// ---------- 保存待ちの行列 ----------
+// 手元のデータを先に書き換えて即座に描き直し、スプレッドシートへの保存は裏で順に流す
+let queue = [];      // 保存待ちの処理
+let sending = false; // いま送信中かどうか
+
+function save(localChange, fn, args, doneMsg) {
+  localChange();              // 1. 手元のデータをすぐ書き換える
+  render();                   // 2. すぐ画面に出す（待たせない）
+  if (doneMsg) toast(doneMsg);
+  queue.push({ fn, args });   // 3. 保存は行列に並べる
+  drain();
+}
+
+function drain() {
+  if (sending || !queue.length) return;
+  sending = true; spin(true);
+  const job = queue[0];
+  google.script.run
+    .withSuccessHandler(data => {
+      queue.shift(); sending = false;
+      // 行列が空になった時だけ、サーバーの内容に揃え直す（IDの確定など）
+      if (!queue.length) { spin(false); DATA = data; render(); }
+      drain();
+    })
+    .withFailureHandler(err => {
+      console.error('保存に失敗:', job.fn, err);
+      queue = []; sending = false; spin(false);
+      toast('保存できませんでした：' + ((err && err.message) ? err.message : String(err)));
+      call('getData', []);   // 画面をサーバーの状態に戻す
+    })[job.fn](...job.args);
+}
+
+// 保存が残ったまま閉じようとしたら引き止める
+window.addEventListener('beforeunload', e => {
+  if (queue.length || sending) { e.preventDefault(); e.returnValue = ''; }
+});
+
+const tmpId = () => 'tmp' + Math.random().toString(36).slice(2, 10);   // 保存が返るまでの仮ID
+const sortAdvances = () => DATA.advances.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+const scrollTop = () => { const v = document.getElementById('view'); if (v) v.scrollTop = 0; };
+
+function newForm() {
+  return { id: null, date: today(), title: '', total: '', memo: '', picked: [],
+           filter: '', showGroup: false, includeMe: true, groupAmt: {}, amounts: {}, adding: null };
+}
+// 既存の立替を、登録フォームに読み込んで編集状態にする
+function formFromAdvance(a) {
+  const f = newForm();
+  f.id = a.id; f.date = a.date; f.title = a.title; f.total = a.total; f.memo = a.memo;
+  f.picked = a.shares.map(s => s.person);
+  a.shares.forEach(s => f.amounts[s.person] = s.amount);
+  f.includeMe = a.headcount > a.shares.length;
+  return f;
+}
+
+// ---------- 集計 ----------
+function owedByPerson() {
+  const map = {};
+  DATA.advances.forEach(a => a.shares.forEach(s => {
+    if (s.paid) return;
+    if (!map[s.person]) map[s.person] = { total: 0, items: [] };
+    map[s.person].total += s.amount;
+    map[s.person].items.push({ share: s, adv: a });
+  }));
+  return Object.entries(map).sort((x, y) => y[1].total - x[1].total);
+}
+const pickedSum = () => form.picked.reduce((x, p) => x + (Number(form.amounts[p]) || 0), 0);
+
+// ---------- 描画 ----------
+function render() {
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === TAB));
+  const v = document.getElementById('view');
+  if (TAB === 'owed') v.innerHTML = renderOwed();
+  if (TAB === 'list') v.innerHTML = renderList();
+  if (TAB === 'add') v.innerHTML = renderAdd();
+  if (TAB === 'members') v.innerHTML = renderMembers();
+}
+
+function renderOwed() {
+  const owed = owedByPerson();
+  const grand = owed.reduce((s, [, v]) => s + v.total, 0);
+  const hero = `
+    <div class="hero">
+      <p>まだ返ってきていないお金</p>
+      <div class="amt">${yen(grand)}</div>
+      <div class="from">${owed.length ? owed.length + '人から回収予定' : '回収待ちはありません'}</div>
+    </div>`;
+  if (!owed.length) return hero + '<div class="empty">全部回収できています。<br>立て替えたら「＋登録」から追加してください。</div>';
+  return hero + '<h2>相手ごと</h2><div class="stack">' + owed.map(([name, v]) => {
+    const m = member(name);
+    const tag = (m.status || m.gender) ? `<span class="tag">${esc(m.status + m.gender)}</span>` : '';
+    return `
+    <div class="card person ${openPeople.has(name) ? 'open' : ''}">
+      <div class="person-head" data-act="toggle" data-name="${esc(name)}">
+        <span class="person-name">${esc(name)}</span>${tag}
+        <span class="amt">${yen(v.total)}</span><span class="caret">▼</span>
+      </div>
+      <div class="person-body">
+        ${v.items.map(i => `<div class="item"><span>${i.adv.date.slice(5).replace('-', '/')}　${esc(i.adv.title)}</span><span>${yen(i.share.amount)}</span></div>`).join('')}
+        <button class="ghost accent" data-act="payall" data-ids="${v.items.map(i => i.share.id).join(',')}" data-name="${esc(name)}">${esc(name)}から全額受け取った</button>
+      </div>
+    </div>`;
+  }).join('') + '</div>';
+}
+
+function renderList() {
+  if (!DATA.advances.length) return '<div class="empty">まだ立替がありません。</div>';
+  return '<h2>立替の記録</h2><div class="stack">' + DATA.advances.map(a => {
+    const done = a.shares.every(s => s.paid);
+    const rest = a.shares.filter(s => !s.paid).reduce((x, s) => x + s.amount, 0);
+    return `
+    <div class="card adv">
+      <div class="adv-top">
+        <div>
+          <div class="adv-title">${esc(a.title)}</div>
+          <div class="adv-meta">${a.date}${a.total ? '　総額' + yen(a.total) : ''}　${a.headcount}人${a.memo ? '　' + esc(a.memo) : ''}</div>
+        </div>
+        <span class="state ${done ? 'done' : ''}">${done ? '回収済み' : '残 ' + yen(rest)}</span>
+      </div>
+      <div class="chips">
+        ${a.shares.map(s => `<button class="chip ${s.paid ? 'paid' : ''}" data-act="flip" data-id="${s.id}" data-paid="${s.paid}">${esc(s.person)}　${yen(s.amount)}</button>`).join('')}
+      </div>
+      <div class="acts">
+        <button class="btn" data-act="edit" data-id="${a.id}">編集</button>
+        <button class="btn danger" data-act="delete" data-id="${a.id}" data-title="${esc(a.title)}">削除</button>
+      </div>
+    </div>`;
+  }).join('') + '</div><p class="note">名前をタップするたびに、回収済みと未回収が切り替わります。</p>';
+}
+
+// 均等割り（端数は切り上げ）。「均等で割る」ボタンを押した時だけ走る
+function autoEven() {
+  const total = Number(form.total) || 0;
+  if (!total) { toast('先に「支払った総額」を入れてください'); return; }
+  const n = form.picked.length + (form.includeMe ? 1 : 0);
+  const each = n ? Math.ceil(total / n) : 0;
+  form.picked.forEach(p => form.amounts[p] = each);
+  render();
+}
+// 属性ごとの金額を、その属性の人全員に反映
+function applyGroup(g) {
+  const v = Number(form.groupAmt[g]) || 0;
+  form.picked.filter(p => groupOf(p) === g).forEach(p => form.amounts[p] = v);
+}
+
+function renderAdd() {
+  if (!form) form = newForm();
+  const n = form.picked.length + (form.includeMe ? 1 : 0);
+  const sum = pickedSum();
+  const groups = [...new Set(form.picked.map(groupOf))];
+  const pool = DATA.members.filter(m => matchOf(m, form.filter));
+
+  const addBlock = form.adding ? `
+    <div class="grp">
+      <input type="text" id="n-name" value="${esc(form.adding.name)}" placeholder="名前">
+      <div class="picks" style="margin-top:8px">
+        ${STATUSES.map(s => `<button class="pick ${form.adding.status === s ? 'on' : ''}" data-act="n-status" data-v="${s}">${s}</button>`).join('')}
+        ${GENDERS.map(g => `<button class="pick ${form.adding.gender === g ? 'on' : ''}" data-act="n-gender" data-v="${g}">${g}</button>`).join('')}
+      </div>
+      <div class="inline" style="margin-top:10px">
+        <button class="primary" data-act="n-save">追加して選択</button>
+        <button class="ghost" style="margin-top:0" data-act="n-cancel">やめる</button>
+      </div>
+    </div>` : '';
+
+  return `
+  <div class="card pad">
+    ${form.id ? `<div class="grp" style="margin:0 0 6px"><div class="head"><b>立替を編集中</b><button class="link" style="padding:0" data-act="edit-cancel">やめる</button></div></div>` : ''}
+    <label>日付</label>
+    <input type="date" id="f-date" value="${form.date}">
+    <label>内容</label>
+    <input type="text" id="f-title" value="${esc(form.title)}" placeholder="例：焼肉、旅行の宿代">
+    <label>支払った総額（空欄でもOK）</label>
+    <input type="number" id="f-total" inputmode="numeric" value="${form.total}" placeholder="未入力のままでも登録できます">
+
+    <label>回収する相手</label>
+    ${form.picked.length ? `<div class="picks" style="margin-bottom:10px">
+      ${form.picked.map(x => `<button class="pick on" data-act="pick" data-name="${esc(x)}">${esc(x)} ×</button>`).join('')}
+    </div>` : ''}
+    <select id="f-filter">
+      <option value="">すべて（${DATA.members.length}人）</option>
+      ${FILTERS.map(f => `<option value="${f}" ${form.filter === f ? 'selected' : ''}>${f}（${DATA.members.filter(m => matchOf(m, f)).length}人）</option>`).join('')}
+    </select>
+    <div class="picks" style="margin-top:8px">
+      ${pool.map(m => `<button class="pick ${form.picked.includes(m.name) ? 'on' : ''}" data-act="pick" data-name="${esc(m.name)}">${esc(m.name)}</button>`).join('')}
+      <button class="pick add" data-act="n-open">＋ 新しい人</button>
+    </div>
+    ${pool.length ? '' : '<p class="note">この絞り込みに当てはまる人がいません。</p>'}
+    ${addBlock}
+
+    ${form.picked.length ? `
+    <label>金額</label>
+    <div class="inline">
+      <button class="btn" data-act="even">均等で割る</button>
+      <button class="btn ${form.showGroup ? 'on' : ''}" data-act="group-toggle">属性ごとに入力 ${form.showGroup ? '▲' : '▼'}</button>
+    </div>
+    <label class="check" style="color:var(--ink)"><input type="checkbox" id="f-me" ${form.includeMe ? 'checked' : ''}>自分の分も含めて割る（${n}人で割り）</label>
+    ${form.showGroup ? `
+      ${groups.map(g => `
+        <div class="grp">
+          <div class="head">
+            <b>${esc(g)}</b>
+            <span class="tag">${form.picked.filter(p => groupOf(p) === g).length}人</span>
+            <input type="number" inputmode="numeric" data-grp="${esc(g)}" value="${form.groupAmt[g] ?? ''}" placeholder="1人あたり">
+          </div>
+          <div class="who">${form.picked.filter(p => groupOf(p) === g).map(esc).join('、')}</div>
+        </div>`).join('')}
+      <p class="note">ここに入れた金額が、その属性の人全員にそのまま入ります。属性が未設定の人は「属性なし」にまとまります。</p>
+    ` : ''}
+
+    <label>個別の調整</label>
+    ${form.picked.map(p => {
+      const m = member(p);
+      return `<div class="row"><span class="who"><b>${esc(p)}</b>${(m.status || m.gender) ? ` <span class="tag">${esc(m.status + m.gender)}</span>` : ''}</span>
+      <input type="number" inputmode="numeric" data-amt="${esc(p)}" value="${form.amounts[p] ?? ''}"></div>`;
+    }).join('')}
+    <div class="sum" id="f-sum">${sumText(sum, form.total)}</div>
+    ` : ''}
+
+    <label>メモ（任意）</label>
+    <input type="text" id="f-memo" value="${esc(form.memo)}" placeholder="任意">
+    <button class="primary" data-act="save">${form.id ? '編集を保存' : 'この立替を登録'}</button>
+  </div>`;
+}
+
+function sumText(sum, total) {
+  const t = Number(total) || 0;
+  if (!t) return `回収予定 <b>${yen(sum)}</b>`;   // 総額が空欄なら自分の負担は出さない
+  const diff = t - sum;
+  const self = diff >= 0 ? `自分の負担 <b>${yen(diff)}</b>` : `総額より <b>${yen(-diff)}</b> 多い`;
+  return `回収予定 <b>${yen(sum)}</b>　／　${self}`;
+}
+function updateSummary() {
+  const el = document.getElementById('f-sum');
+  if (el) el.innerHTML = sumText(pickedSum(), form.total);
+}
+function refreshAmounts() {
+  document.querySelectorAll('[data-amt]').forEach(i => i.value = form.amounts[i.dataset.amt] ?? '');
+}
+
+function renderMembers() {
+  return `
+  <div class="card pad">
+    <label>メンバーを追加</label>
+    <div class="inline">
+      <input type="text" id="m-name" placeholder="名前">
+      <button class="primary" data-act="m-add">追加</button>
+    </div>
+    <p class="note">属性は追加したあとに設定できます。</p>
+  </div>
+  <h2>登録済み（${DATA.members.length}人）</h2>
+  ${DATA.members.length ? '<div class="stack" id="m-list">' + DATA.members.map(m => m.name === (editing && editing.oldName) ? editRow(m) : `
+    <div class="card pad" data-member="${esc(m.name)}" style="padding:12px 14px">
+      <div class="row" style="margin:0">
+        <span class="handle" title="ドラッグで並べ替え">☰</span>
+        <span class="who"><b style="font-weight:700">${esc(m.name)}</b>
+          ${m.status ? `<span class="tag">${esc(m.status)}</span>` : ''}
+          ${m.gender ? `<span class="tag">${esc(m.gender)}</span>` : ''}
+          ${(!m.status && !m.gender) ? '<span class="tag">属性なし</span>' : ''}
+        </span>
+        <button class="btn" data-act="m-edit" data-name="${esc(m.name)}">編集</button>
+      </div>
+    </div>`).join('') + '</div><p class="note">☰ をつかんで上下にドラッグすると、並び順を変えられます。この順番が「回収する相手」の表示順になります。</p>' : '<div class="empty">まだ登録がありません。</div>'}`;
+}
+
+function editRow(m) {
+  return `
+  <div class="card pad">
+    <label>名前</label>
+    <input type="text" id="e-name" value="${esc(editing.name)}">
+    <label>区分</label>
+    <div class="picks">${STATUSES.map(s => `<button class="pick ${editing.status === s ? 'on' : ''}" data-act="e-status" data-v="${s}">${s}</button>`).join('')}</div>
+    <label>性別</label>
+    <div class="picks">${GENDERS.map(g => `<button class="pick ${editing.gender === g ? 'on' : ''}" data-act="e-gender" data-v="${g}">${g}</button>`).join('')}</div>
+    <div class="inline" style="margin-top:16px">
+      <button class="primary" data-act="e-save">保存</button>
+      <button class="ghost" style="margin-top:0" data-act="e-cancel">やめる</button>
+    </div>
+    <button class="ghost danger" data-act="e-delete" data-name="${esc(m.name)}">${esc(m.name)}をメンバーから削除</button>
+    <p class="note">同じ属性はもう一度タップすると外せます。過去の立替の記録は削除されません。</p>
+  </div>`;
+}
+
+// ---------- 入力 ----------
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (editing && t.id === 'e-name') editing.name = t.value;
+  if (!form) return;
+  if (t.id === 'f-date') form.date = t.value;
+  if (t.id === 'f-title') form.title = t.value;
+  if (t.id === 'f-memo') form.memo = t.value;
+  if (t.id === 'n-name') form.adding.name = t.value;
+  if (t.id === 'f-total') { form.total = t.value; updateSummary(); }
+  if (t.dataset.grp) {
+    form.groupAmt[t.dataset.grp] = t.value;
+    applyGroup(t.dataset.grp);
+    refreshAmounts(); updateSummary();
+  }
+  if (t.dataset.amt) { form.amounts[t.dataset.amt] = t.value; updateSummary(); }
+});
+
+document.addEventListener('change', e => {
+  if (!form) return;
+  if (e.target.id === 'f-me') { form.includeMe = e.target.checked; render(); }
+  if (e.target.id === 'f-filter') { form.filter = e.target.value; render(); }   // 人員プールの絞り込み
+});
+
+document.addEventListener('click', e => {
+  const tab = e.target.closest('nav button');
+  if (tab) {
+    TAB = tab.dataset.tab; editing = null;
+    if (TAB === 'add' && form && form.id) form = null;   // 編集中に＋登録を押したら新規入力に戻す
+    render(); scrollTop(); return;
+  }
+  const el = e.target.closest('[data-act]');
+  if (!el) return;
+  const d = el.dataset;
+  switch (d.act) {
+
+    // 未回収
+    case 'toggle':
+      openPeople.has(d.name) ? openPeople.delete(d.name) : openPeople.add(d.name);
+      render(); break;
+    case 'payall': {
+      if (!confirm(`${d.name}から全額受け取った扱いにしますか？`)) break;
+      const ids = d.ids.split(',');
+      save(() => DATA.advances.forEach(a => a.shares.forEach(s => {
+        if (ids.includes(s.id)) { s.paid = true; s.paidDate = today(); }
+      })), 'setPaid', [ids, true], `${d.name}の分を回収済みにしました`);
+      break;
+    }
+
+    // 立替一覧
+    case 'flip': {
+      const paid = d.paid !== 'true';
+      save(() => DATA.advances.forEach(a => a.shares.forEach(s => {
+        if (s.id === d.id) { s.paid = paid; s.paidDate = paid ? today() : ''; }
+      })), 'setPaid', [[d.id], paid], paid ? '回収済みにしました' : '未回収に戻しました');
+      break;
+    }
+    case 'edit': {
+      const a = DATA.advances.find(x => x.id === d.id);
+      if (a) { form = formFromAdvance(a); TAB = 'add'; render(); scrollTop(); }
+      break;
+    }
+    case 'edit-cancel':
+      form = null; TAB = 'list'; render(); break;
+    case 'delete':
+      if (confirm(`「${d.title}」を削除しますか？`))
+        save(() => { DATA.advances = DATA.advances.filter(a => a.id !== d.id); },
+             'deleteAdvance', [d.id], '削除しました');
+      break;
+
+    // 登録フォーム
+    case 'pick':
+      form.picked = form.picked.includes(d.name) ? form.picked.filter(x => x !== d.name) : [...form.picked, d.name];
+      if (form.showGroup) applyGroup(groupOf(d.name));   // 金額は自動で入れない（空のまま）
+      render(); break;
+    case 'even':
+      autoEven(); break;
+    case 'group-toggle':
+      form.showGroup = !form.showGroup; render(); break;
+    case 'n-open':
+      form.adding = { name: '', status: '', gender: '' }; render(); break;
+    case 'n-cancel':
+      form.adding = null; render(); break;
+    case 'n-status':
+      form.adding.status = form.adding.status === d.v ? '' : d.v; render(); break;
+    case 'n-gender':
+      form.adding.gender = form.adding.gender === d.v ? '' : d.v; render(); break;
+    case 'n-save': {
+      const m = { ...form.adding, name: (document.getElementById('n-name').value || '').trim() };
+      if (!m.name) { toast('名前を入力してください'); break; }
+      if (DATA.members.some(x => x.name === m.name)) { toast(m.name + ' はすでに登録されています'); break; }
+      save(() => {
+        DATA.members.push({ name: m.name, status: m.status || '', gender: m.gender || '' });
+        form.adding = null;
+        if (!form.picked.includes(m.name)) form.picked.push(m.name);
+        if (form.showGroup) applyGroup(groupOf(m.name));
+      }, 'addMember', [m], `${m.name}を追加しました`);
+      break;
+    }
+    case 'save': {
+      const shares = form.picked.map(p => ({ person: p, amount: Number(form.amounts[p]) || 0 })).filter(s => s.amount > 0);
+      const payload = {
+        id: form.id,
+        date: form.date, title: (form.title || '').trim(),
+        total: form.total === '' ? '' : Number(form.total),   // 空欄のまま登録できる
+        headcount: form.picked.length + (form.includeMe ? 1 : 0),
+        memo: (form.memo || '').trim(), shares,
+      };
+      if (!payload.title) { toast('内容を入力してください'); break; }
+      if (!shares.length) { toast('回収する相手と金額を入力してください'); break; }
+      const isEdit = !!form.id;
+      save(() => {
+        if (isEdit) {
+          const a = DATA.advances.find(x => x.id === payload.id);
+          if (a) {
+            const was = {};
+            a.shares.forEach(x => was[x.person] = x);   // 回収済みの状態を引き継ぐ
+            a.date = payload.date; a.title = payload.title; a.total = payload.total;
+            a.headcount = payload.headcount; a.memo = payload.memo;
+            a.shares = shares.map(x => was[x.person]
+              ? { ...was[x.person], amount: x.amount }
+              : { id: tmpId(), advanceId: a.id, person: x.person, amount: x.amount, paid: false, paidDate: '' });
+          }
+        } else {
+          const id = tmpId();
+          DATA.advances.push({
+            id, date: payload.date, title: payload.title, total: payload.total,
+            headcount: payload.headcount, memo: payload.memo,
+            shares: shares.map(x => ({ id: tmpId(), advanceId: id, person: x.person, amount: x.amount, paid: false, paidDate: '' })),
+          });
+        }
+        sortAdvances();
+        form = null; TAB = isEdit ? 'list' : 'owed';
+      }, isEdit ? 'updateAdvance' : 'addAdvance', [payload], isEdit ? '保存しました' : '登録しました');
+      break;
+    }
+
+    // メンバー
+    case 'm-add': {
+      const name = (document.getElementById('m-name').value || '').trim();
+      if (!name) { toast('名前を入力してください'); break; }
+      if (DATA.members.some(x => x.name === name)) { toast(name + ' はすでに登録されています'); break; }
+      save(() => DATA.members.push({ name, status: '', gender: '' }),
+           'addMember', [{ name, status: '', gender: '' }], `${name}を追加しました`);
+      break;
+    }
+    case 'm-edit': {
+      const m = member(d.name);
+      editing = { oldName: m.name, name: m.name, status: m.status, gender: m.gender };
+      render(); break;
+    }
+    case 'e-status':
+      editing.status = editing.status === d.v ? '' : d.v; render(); break;
+    case 'e-gender':
+      editing.gender = editing.gender === d.v ? '' : d.v; render(); break;
+    case 'e-cancel':
+      editing = null; render(); break;
+    case 'e-save': {
+      const payload = { ...editing, name: (document.getElementById('e-name').value || '').trim() };
+      if (!payload.name) { toast('名前を入力してください'); break; }
+      save(() => {
+        const mm = DATA.members.find(x => x.name === payload.oldName);
+        if (mm) { mm.name = payload.name; mm.status = payload.status || ''; mm.gender = payload.gender || ''; }
+        if (payload.name !== payload.oldName) {
+          DATA.advances.forEach(a => a.shares.forEach(x => { if (x.person === payload.oldName) x.person = payload.name; }));
+        }
+        editing = null;
+      }, 'updateMember', [payload], '保存しました');
+      break;
+    }
+    case 'e-delete':
+      if (confirm(`${d.name}をメンバーから削除しますか？\n過去の立替の記録はそのまま残ります。`))
+        save(() => { DATA.members = DATA.members.filter(x => x.name !== d.name); editing = null; },
+             'deleteMember', [d.name], '削除しました');
+      break;
+  }
+});
+
+// ---------- メンバーの並べ替え（☰ をつかんで上下にドラッグ） ----------
+// マウスでも指でも同じように動くよう Pointer イベントを使う
+let dragEl = null;   // つかんでいるカード
+let startY = 0;      // つかんだ瞬間の指の位置
+let baseY = 0;       // 並びが入れ替わったぶんのズレ
+
+// 入れ替えた行を、元いた場所から新しい場所へすべらせる（FLIP という定番の手法）
+function slideRows(list, move) {
+  const rows = [...list.querySelectorAll('[data-member]')];
+  const before = rows.map(r => r.getBoundingClientRect().top);   // 1. 動かす前の位置を覚える
+  move();                                                        // 2. 入れ替える
+  rows.forEach((r, i) => {
+    if (r === dragEl) return;                                    // つかんでいる本人は指について回る
+    const dy = before[i] - r.getBoundingClientRect().top;
+    if (!dy) return;
+    r.style.transition = 'none';                                 // 3. いったん元の位置に見せて…
+    r.style.transform = 'translateY(' + dy + 'px)';
+    requestAnimationFrame(() => {                                // 4. そこから新しい位置へ滑らせる
+      r.style.transition = 'transform .18s cubic-bezier(.2,.7,.3,1)';
+      r.style.transform = '';
+    });
+  });
+}
+
+document.addEventListener('pointerdown', e => {
+  if (editing) return;                       // 編集中は並べ替えしない
+  const h = e.target.closest('.handle');
+  if (!h) return;
+  const row = h.closest('[data-member]');
+  if (!row) return;
+  e.preventDefault();
+  dragEl = row; startY = e.clientY; baseY = 0;
+  row.classList.add('dragging');
+  row.style.transition = 'none';
+  h.setPointerCapture(e.pointerId);
+});
+
+document.addEventListener('pointermove', e => {
+  if (!dragEl) return;
+  e.preventDefault();
+  const list = document.getElementById('m-list');
+  if (!list) return;
+
+  // つかんだカードは指にぴったりついてくる
+  dragEl.style.transform = 'translateY(' + (e.clientY - startY - baseY) + 'px)';
+
+  // 画面の端に寄せたら少しずつスクロールする
+  const view = document.getElementById('view');
+  if (view) {
+    const vb = view.getBoundingClientRect();
+    if (e.clientY < vb.top + 60) view.scrollTop -= 10;
+    else if (e.clientY > vb.bottom - 60) view.scrollTop += 10;
+  }
+
+  const under = document.elementFromPoint(e.clientX, e.clientY);
+  const target = under && under.closest('[data-member]');
+  if (!target || target === dragEl || target.parentNode !== list) return;
+  const box = target.getBoundingClientRect();
+  const below = e.clientY > box.top + box.height / 2;
+
+  const t0 = dragEl.getBoundingClientRect().top;
+  slideRows(list, () => list.insertBefore(dragEl, below ? target.nextSibling : target));
+  baseY += dragEl.getBoundingClientRect().top - t0;      // 入れ替わったぶんを打ち消す
+  dragEl.style.transform = 'translateY(' + (e.clientY - startY - baseY) + 'px)';
+});
+
+function endDrag(commit) {
+  if (!dragEl) return;
+  const el = dragEl; dragEl = null;
+  const list = document.getElementById('m-list');
+  const names = list ? [...list.querySelectorAll('[data-member]')].map(x => x.dataset.member) : [];
+
+  el.style.transition = 'transform .16s ease';   // 空いた場所へすとんと収まる
+  el.style.transform = '';
+  setTimeout(() => {
+    el.classList.remove('dragging');
+    el.style.transition = ''; el.style.transform = '';
+    if (!commit || !list) return;
+    if (names.length !== DATA.members.length) return;      // 表示が欠けている時は保存しない
+    if (names.join('\n') === DATA.members.map(m => m.name).join('\n')) return;   // 変化なし
+    save(() => {
+      const by = {};
+      DATA.members.forEach(m => by[m.name] = m);
+      DATA.members = names.map(x => by[x]).filter(Boolean);
+    }, 'reorderMembers', [names], '');
+  }, 170);
+}
+document.addEventListener('pointerup', () => endDrag(true));
+document.addEventListener('pointercancel', () => endDrag(false));
+
+// データ到着前でも画面を出す（真っ白＋緑バーだけ、を防ぐ）
+render();
+if (typeof google === 'undefined' || !google.script || !google.script.run) {
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('view').innerHTML =
+    '<div class="empty">サーバーに接続できません。<br>Apps Script のウェブアプリURL（末尾が /exec）から開いてください。</div>';
+} else {
+  call('getData', []);
+}
+</script>
+</body>
+</html>

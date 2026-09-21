@@ -5,7 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;500;700;800&family=Shippori+Mincho:wght@400;500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #F1F3F6;
@@ -18,12 +18,30 @@
     --done: #0E7A6E;
     --done-soft: #E4F2F0;
     --r: 16px;
+    --font: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", sans-serif;
+  }
+  [data-theme="dark"] {
+    --bg: #0F172A;
+    --card: #1E293B;
+    --ink: #F8FAFC;
+    --sub: #94A3B8;
+    --line: #334155;
+    --owed: #F43F5E;
+    --owed-soft: #3B1828;
+    --done: #10B981;
+    --done-soft: #064E3B;
+  }
+  [data-font="rounded"] {
+    --font: "M PLUS Rounded 1c", sans-serif;
+  }
+  [data-font="mincho"] {
+    --font: "Shippori Mincho", "Yu Mincho", serif;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html { height: 100%; }
   body {
     margin: 0; background: var(--bg); color: var(--ink);
-    font-family: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", sans-serif;
+    font-family: var(--font);
     font-variant-numeric: tabular-nums;
     font-size: 15px; line-height: 1.6;
     /* 画面の高さに固定し、中身だけをスクロールさせる（下のバーを動かさないため） */
@@ -49,9 +67,9 @@
   /* カレンダー */
   .cal-card {
     background: #FFFFFF; border: 1px solid var(--line); border-radius: 20px;
-    padding: 16px 14px 14px; box-shadow: 0 4px 16px rgba(16, 32, 46, 0.04);
+    padding: 16px 8px 14px; box-shadow: 0 4px 16px rgba(16, 32, 46, 0.04);
   }
-  .cal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding: 0 4px; }
+  .cal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding: 0 8px; }
   .cal-title { font-size: 16px; font-weight: 700; color: var(--ink); }
   .cal-nav { display: flex; align-items: center; gap: 6px; }
   .cal-nav-btn {
@@ -59,15 +77,17 @@
     width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
     cursor: pointer; font-size: 13px; color: var(--ink); font-weight: 700;
   }
-  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; text-align: center; }
-  .cal-dow { font-size: 11px; font-weight: 700; color: var(--sub); padding: 2px 0 6px; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; width: 100%; justify-items: center; align-items: center; }
+  .cal-dow { font-size: 11px; font-weight: 700; color: var(--sub); padding: 2px 0 6px; width: 100%; }
   .cal-dow.sun { color: var(--owed); }
   .cal-dow.sat { color: #2B6CB0; }
   .cal-day {
-    aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    aspect-ratio: 1; width: 100%; max-width: 44px; margin: 0 auto;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
     border-radius: 12px; cursor: pointer; position: relative; font-size: 14px; font-weight: 500;
     transition: background .12s, color .12s; user-select: none;
   }
+  .cal-day span { line-height: 1; display: inline-block; }
   .cal-day:hover { background: #F1F3F6; }
   .cal-day.today { font-weight: 700; }
   .cal-day.today::before {
@@ -76,12 +96,51 @@
   }
   .cal-day.selected { background: var(--ink) !important; color: #fff !important; font-weight: 700; }
   .cal-day.empty-day { cursor: default; pointer-events: none; }
-  .cal-dots { display: flex; gap: 2px; position: absolute; bottom: 4px; }
+  .cal-dots { display: flex; gap: 2px; position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%); }
   .cal-dot { width: 5px; height: 5px; border-radius: 50%; }
   .cal-dot.owed { background: var(--owed); }
   .cal-dot.done { background: var(--done); }
   .cal-day.selected .cal-dot.owed { background: #FF9EBB; }
   .cal-day.selected .cal-dot.done { background: #7CE0D3; }
+
+  /* 設定画面スタイル */
+  .menu-card {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 20px; cursor: pointer; background: var(--card);
+    border: 1px solid var(--line); border-radius: var(--r); margin-bottom: 12px;
+    transition: transform .1s, background .15s;
+  }
+  .menu-card:active { transform: scale(0.99); }
+  .menu-info b { display: block; font-size: 16px; font-weight: 700; color: var(--ink); }
+  .menu-info span { font-size: 12px; color: var(--sub); margin-top: 2px; display: block; }
+  .menu-arrow { font-size: 18px; color: var(--sub); font-weight: 700; }
+
+  .theme-box {
+    flex: 1; border: 2px solid var(--line); border-radius: 14px; padding: 14px;
+    cursor: pointer; text-align: center; background: var(--card); color: var(--ink);
+    transition: border-color .15s;
+  }
+  .theme-box.on { border-color: var(--ink); font-weight: 700; background: var(--owed-soft); color: var(--ink); }
+  .font-pick {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px;
+    margin-top: 8px; cursor: pointer; background: var(--card); color: var(--ink);
+  }
+  .font-pick.on { border-color: var(--ink); background: var(--owed-soft); font-weight: 700; }
+
+  /* ダークモード適応 */
+  [data-theme="dark"] nav { background: rgba(30, 41, 59, 0.94); border-color: rgba(51, 65, 85, 0.8); }
+  [data-theme="dark"] nav button.on { background: #334155; color: #F8FAFC; }
+  [data-theme="dark"] input[type=text], [data-theme="dark"] input[type=number], [data-theme="dark"] input[type=date], [data-theme="dark"] select { background: #0F172A; border-color: #334155; color: #F8FAFC; }
+  [data-theme="dark"] .pick, [data-theme="dark"] .filter-box, [data-theme="dark"] .btn, [data-theme="dark"] .ghost { background: #1E293B; border-color: #334155; color: #F8FAFC; }
+  [data-theme="dark"] .pick.on, [data-theme="dark"] .filter-box.on, [data-theme="dark"] .btn.on { background: #F8FAFC; border-color: #F8FAFC; color: #0F172A; }
+  [data-theme="dark"] .primary { background: #F8FAFC; color: #0F172A; }
+  [data-theme="dark"] .cal-nav-btn { background: #0F172A; border-color: #334155; color: #F8FAFC; }
+  [data-theme="dark"] .cal-day:hover { background: #334155; }
+  [data-theme="dark"] .cal-day.selected { background: #F8FAFC !important; color: #0F172A !important; }
+  [data-theme="dark"] .grp { background: #0F172A; border-color: #334155; }
+  [data-theme="dark"] .theme-box.on, [data-theme="dark"] .font-pick.on { background: #334155; border-color: #F8FAFC; color: #F8FAFC; }
+  [data-theme="dark"] .cal-card, [data-theme="dark"] .summary-card { background: #1E293B; border-color: #334155; }
 
   .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); }
   .stack > .card { margin-bottom: 10px; }
@@ -109,6 +168,8 @@
     width: 100%; font: inherit; font-size: 16px; padding: 11px 13px;
     border: 1px solid var(--line); border-radius: 11px; background: #FAFBFC; color: var(--ink);
   }
+  input[type=date] { text-align: center; -webkit-appearance: none; }
+  input[type=date]::-webkit-date-and-time-value { text-align: center; }
   select { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--sub) 50%), linear-gradient(135deg, var(--sub) 50%, transparent 50%); background-position: calc(100% - 19px) 21px, calc(100% - 13px) 21px; background-size: 6px 6px, 6px 6px; background-repeat: no-repeat; }
   input:focus { background: #fff; border-color: var(--ink); outline: none; }
   .picks { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -189,7 +250,7 @@
   <button data-tab="owed" class="on">未回収</button>
   <button data-tab="list">立替一覧</button>
   <button data-tab="add">＋登録</button>
-  <button data-tab="members">メンバー</button>
+  <button data-tab="settings">設定</button>
 </nav>
 <div id="toast"></div>
 
@@ -208,6 +269,14 @@ let showAllMembers = false; // メンバー一覧の全件表示フラグ
 let calYear = new Date().getFullYear();
 let calMonth = new Date().getMonth() + 1;
 let selectedDate = new Date().toLocaleDateString('sv-SE');
+let settingsView = 'menu'; // 'menu' | 'members' | 'appearance'
+
+try {
+  const savedTheme = localStorage.getItem('flair_theme');
+  if (savedTheme) document.documentElement.dataset.theme = savedTheme;
+  const savedFont = localStorage.getItem('flair_font');
+  if (savedFont) document.documentElement.dataset.font = savedFont;
+} catch (_) {}
 
 const yen = n => '¥' + Number(n || 0).toLocaleString('ja-JP');
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -331,7 +400,7 @@ function render() {
   if (TAB === 'owed') v.innerHTML = renderOwed();
   if (TAB === 'list') v.innerHTML = renderList();
   if (TAB === 'add') v.innerHTML = renderAdd();
-  if (TAB === 'members') v.innerHTML = renderMembers();
+  if (TAB === 'settings') v.innerHTML = renderSettings();
 }
 
 function renderOwed() {
@@ -621,6 +690,91 @@ function renderMembers() {
   })() : '<div class="empty">まだ登録がありません。</div>'}`;
 }
 
+function renderSettings() {
+  if (settingsView === 'members') return renderMembersWithBack();
+  if (settingsView === 'appearance') return renderAppearance();
+  return renderSettingsMenu();
+}
+
+function renderSettingsMenu() {
+  return `
+  <div style="margin:8px 4px 16px;">
+    <h2 style="margin:0; font-size:18px; font-weight:700; color:var(--ink);">設定</h2>
+  </div>
+  <div class="menu-card" data-act="set-nav" data-to="members">
+    <div class="menu-info">
+      <b>👥 メンバー管理</b>
+      <span>メンバーの追加・編集・並び替え（${DATA.members.length}人）</span>
+    </div>
+    <span class="menu-arrow">›</span>
+  </div>
+  <div class="menu-card" data-act="set-nav" data-to="appearance">
+    <div class="menu-info">
+      <b>🎨 アプリ設定</b>
+      <span>配色テーマ（ライト / ダーク）・フォント書式</span>
+    </div>
+    <span class="menu-arrow">›</span>
+  </div>`;
+}
+
+function renderMembersWithBack() {
+  return `
+  <div style="display:flex; align-items:center; gap:8px; margin:4px 4px 14px;">
+    <button type="button" class="btn" data-act="set-back" style="padding:6px 12px; font-size:13px;">← 設定に戻る</button>
+    <h2 style="margin:0; font-size:16px; font-weight:700; color:var(--ink);">メンバー管理</h2>
+  </div>` + renderMembers();
+}
+
+function renderAppearance() {
+  const curTheme = document.documentElement.dataset.theme || 'light';
+  const curFont = document.documentElement.dataset.font || 'gothic';
+
+  return `
+  <div style="display:flex; align-items:center; gap:8px; margin:4px 4px 14px;">
+    <button type="button" class="btn" data-act="set-back" style="padding:6px 12px; font-size:13px;">← 設定に戻る</button>
+    <h2 style="margin:0; font-size:16px; font-weight:700; color:var(--ink);">アプリ設定</h2>
+  </div>
+
+  <div class="card pad" style="margin-bottom:12px;">
+    <label style="margin-top:0">配色テーマ</label>
+    <div style="display:flex; gap:10px; margin-top:8px;">
+      <div class="theme-box ${curTheme === 'light' ? 'on' : ''}" data-act="set-theme" data-v="light">
+        <div style="font-size:20px; margin-bottom:4px;">☀️</div>
+        <div>ライト（標準）</div>
+      </div>
+      <div class="theme-box ${curTheme === 'dark' ? 'on' : ''}" data-act="set-theme" data-v="dark">
+        <div style="font-size:20px; margin-bottom:4px;">🌙</div>
+        <div>ダークモード</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card pad">
+    <label style="margin-top:0">文字の書式（フォント）</label>
+    <div class="font-pick ${curFont === 'gothic' ? 'on' : ''}" data-act="set-font" data-v="gothic" style="font-family:'Zen Kaku Gothic New', sans-serif;">
+      <div>
+        <b style="font-size:15px;">モダンゴシック（標準）</b>
+        <div style="font-size:12px; color:var(--sub); margin-top:2px;">すっきり洗練された読みやすい書体</div>
+      </div>
+      ${curFont === 'gothic' ? '✓' : ''}
+    </div>
+    <div class="font-pick ${curFont === 'rounded' ? 'on' : ''}" data-act="set-font" data-v="rounded" style="font-family:'M PLUS Rounded 1c', sans-serif;">
+      <div>
+        <b style="font-size:15px;">丸ゴシック</b>
+        <div style="font-size:12px; color:var(--sub); margin-top:2px;">丸みがあって親しみやすい柔らかい書体</div>
+      </div>
+      ${curFont === 'rounded' ? '✓' : ''}
+    </div>
+    <div class="font-pick ${curFont === 'mincho' ? 'on' : ''}" data-act="set-font" data-v="mincho" style="font-family:'Shippori Mincho', serif;">
+      <div>
+        <b style="font-size:15px;">明朝体</b>
+        <div style="font-size:12px; color:var(--sub); margin-top:2px;">落ち着きと品のあるクラシックな書体</div>
+      </div>
+      ${curFont === 'mincho' ? '✓' : ''}
+    </div>
+  </div>`;
+}
+
 function editRow(m) {
   return `
   <div class="card pad">
@@ -667,12 +821,29 @@ document.addEventListener('click', e => {
   if (tab) {
     TAB = tab.dataset.tab; editing = null;
     if (TAB === 'add' && form && form.id) form = null;   // 編集中に＋登録を押したら新規入力に戻す
+    if (TAB === 'settings') settingsView = 'menu';
     render(); scrollTop(); return;
   }
   const el = e.target.closest('[data-act]');
   if (!el) return;
   const d = el.dataset;
   switch (d.act) {
+
+    // 設定
+    case 'set-nav':
+      settingsView = d.to;
+      render(); scrollTop(); break;
+    case 'set-back':
+      settingsView = 'menu';
+      render(); scrollTop(); break;
+    case 'set-theme':
+      try { localStorage.setItem('flair_theme', d.v); } catch (_) {}
+      document.documentElement.dataset.theme = d.v;
+      render(); break;
+    case 'set-font':
+      try { localStorage.setItem('flair_font', d.v); } catch (_) {}
+      document.documentElement.dataset.font = d.v;
+      render(); break;
 
     // カレンダー
     case 'cal-prev':

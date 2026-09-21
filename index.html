@@ -504,6 +504,9 @@ function renderOwed() {
         <div class="chips">
           ${a.shares.map(s => `<button type="button" class="chip ${s.paid ? 'paid' : ''}" data-act="flip" data-id="${s.id}" data-paid="${s.paid}">${esc(s.person)}　${yen(s.amount)}</button>`).join('')}
         </div>
+        <div class="acts" style="margin-top:10px; padding-top:8px; border-top:1px dashed var(--line); display:flex; justify-content:flex-end; gap:6px;">
+          <button type="button" class="btn" data-act="copy" data-id="${a.id}" style="padding:4px 10px; font-size:12px;">コピーして作成</button>
+        </div>
       </div>`;
     }).join('') + '</div><p class="note">カードをタップすると編集、名前をタップすると回収済みを切り替えられます。</p>';
   } else {
@@ -537,8 +540,9 @@ function renderList() {
         ${a.shares.map(s => `<button class="chip ${s.paid ? 'paid' : ''}" data-act="flip" data-id="${s.id}" data-paid="${s.paid}">${esc(s.person)}　${yen(s.amount)}</button>`).join('')}
       </div>
       <div class="acts">
-        <button class="btn" data-act="edit" data-id="${a.id}">編集</button>
-        <button class="btn danger" data-act="delete" data-id="${a.id}" data-title="${esc(a.title)}">削除</button>
+        <button type="button" class="btn" data-act="copy" data-id="${a.id}">コピーして作成</button>
+        <button type="button" class="btn" data-act="edit" data-id="${a.id}">編集</button>
+        <button type="button" class="btn danger" data-act="delete" data-id="${a.id}" data-title="${esc(a.title)}">削除</button>
       </div>
     </div>`;
   }).join('') + '</div><p class="note">名前をタップするたびに、回収済みと未回収が切り替わります。</p>';
@@ -584,7 +588,7 @@ function renderAdd() {
     <button type="button" class="primary" data-act="save" style="margin-top:0; box-shadow:0 4px 14px rgba(16,32,46,.12);">${form.id ? '編集を保存' : 'この立替を登録'}</button>
   </div>
   <div class="card pad">
-    ${form.id ? `<div class="grp" style="margin:0 0 6px"><div class="head"><b>立替を編集中</b><button type="button" class="link" style="padding:0" data-act="edit-cancel">やめる</button></div></div>` : ''}
+    ${form.id ? `<div class="grp" style="margin:0 0 6px"><div class="head"><b>立替を編集中</b><div style="display:flex; gap:8px; align-items:center;"><button type="button" class="btn" data-act="form-copy" style="padding:4px 10px; font-size:12px;">コピーして新規作成</button><button type="button" class="link" style="padding:0" data-act="edit-cancel">やめる</button></div></div></div>` : ''}
     <label>日付</label>
     <input type="date" id="f-date" value="${form.date}">
     <label>内容</label>
@@ -641,6 +645,7 @@ function renderAdd() {
     <label>メモ（任意）</label>
     <input type="text" id="f-memo" value="${esc(form.memo)}" placeholder="任意">
     <button class="primary" data-act="save">${form.id ? '編集を保存' : 'この立替を登録'}</button>
+    ${form.id ? `<button type="button" class="ghost" data-act="form-copy" style="margin-top:8px;">この内容をコピーして新規登録</button>` : ''}
   </div>`;
 }
 
@@ -894,6 +899,26 @@ document.addEventListener('click', e => {
       save(() => DATA.advances.forEach(a => a.shares.forEach(s => {
         if (s.id === d.id) { s.paid = paid; s.paidDate = paid ? today() : ''; }
       })), 'setPaid', [[d.id], paid], paid ? '回収済みにしました' : '未回収に戻しました');
+      break;
+    }
+    case 'copy': {
+      const a = DATA.advances.find(x => x.id === d.id);
+      if (a) {
+        form = formFromAdvance(a);
+        form.id = null;
+        TAB = 'add';
+        render();
+        scrollTop();
+        toast('立替内容をコピーしました。日付や金額を調整して登録してください');
+      }
+      break;
+    }
+    case 'form-copy': {
+      if (!form) break;
+      form.id = null;
+      render();
+      scrollTop();
+      toast('新規作成に切り替えました。日付や金額を調整して登録してください');
       break;
     }
     case 'edit': {

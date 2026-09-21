@@ -32,7 +32,7 @@
   }
   main {
     flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
-    padding: 16px 14px 28px; max-width: 560px; width: 100%; margin: 0 auto;
+    padding: 16px 14px calc(90px + env(safe-area-inset-bottom, 0px)); max-width: 560px; width: 100%; margin: 0 auto;
   }
   h2 { font-size: 13px; color: var(--sub); font-weight: 500; margin: 22px 4px 10px; }
 
@@ -124,13 +124,24 @@
   .handle { cursor: grab; color: var(--sub); font-size: 17px; line-height: 1; padding: 6px 8px; margin-left: -4px; touch-action: none; user-select: none; }
   .card.dragging { position: relative; z-index: 5; pointer-events: none; box-shadow: 0 10px 26px rgba(16,32,46,.20); }
 
-  nav { flex-shrink: 0; display: flex; background: #fff; border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
-  nav button { flex: 1; border: none; background: none; font: inherit; font-size: 13px; padding: 24px 0 26px; color: var(--sub); cursor: pointer; position: relative; }
-  nav button.on { color: var(--ink); font-weight: 700; }
-  nav button.on::before { content: ''; position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 30px; height: 3px; border-radius: 0 0 3px 3px; background: var(--ink); }
+  nav {
+    position: fixed; left: 14px; right: 14px; bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    max-width: 532px; margin: 0 auto; display: flex;
+    background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(228, 232, 236, 0.9); border-radius: 26px;
+    box-shadow: 0 10px 30px rgba(16,32,46,.12), 0 2px 6px rgba(16,32,46,.04);
+    z-index: 10; padding: 6px; gap: 4px;
+  }
+  nav button {
+    flex: 1; border: none; background: none; font: inherit; font-size: 13px;
+    padding: 12px 0; color: var(--sub); cursor: pointer; border-radius: 20px;
+    transition: background .15s, color .15s; font-weight: 500;
+  }
+  nav button.on { color: var(--ink); font-weight: 700; background: #EDF0F3; }
   button:focus-visible, input:focus-visible { outline: 2px solid var(--done); outline-offset: 2px; }
 
-  #toast { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 96px); transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 12px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 86%; text-align: center; }
+  #toast { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 88px); transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 12px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 86%; text-align: center; z-index: 20; }
   #toast.show { opacity: 1; }
   /* 保存中だけ右上でくるくる回る小さな印 */
   #loading { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); right: 12px; width: 15px; height: 15px; border-radius: 50%; border: 2px solid rgba(16,32,46,.13); border-top-color: var(--done); animation: spin .7s linear infinite; display: none; z-index: 9; }
@@ -173,10 +184,11 @@ const groupOf = name => {
   const m = member(name);
   return (m.status || m.gender) ? (m.status + m.gender) : '属性なし';
 };
-// 絞り込みプルダウンに当てはまるか（'' はすべて）
-const matchOf = (m, f) => !f ? true
-  : f === '属性なし' ? (!m.status && !m.gender)
-  : (m.status === f || m.gender === f);
+// 絞り込みフィルターに当てはまるか（配列で最大2つまで指定可）
+const matchOf = (m, filters) => {
+  if (!filters || !filters.length) return true;
+  return filters.every(f => m.status === f || m.gender === f);
+};
 
 function toast(msg) {
   const t = document.getElementById('toast');
@@ -254,7 +266,7 @@ const scrollTop = () => { const v = document.getElementById('view'); if (v) v.sc
 
 function newForm() {
   return { id: null, date: today(), title: '', total: '', memo: '', picked: [],
-           filter: '', showAllPool: false, showGroup: false, includeMe: true, groupAmt: {}, amounts: {}, adding: null };
+           filters: [], showAllPool: false, showGroup: false, includeMe: true, groupAmt: {}, amounts: {}, adding: null };
 }
 // 既存の立替を、登録フォームに読み込んで編集状態にする
 function formFromAdvance(a) {
@@ -361,24 +373,27 @@ function renderAdd() {
   const n = form.picked.length + (form.includeMe ? 1 : 0);
   const sum = pickedSum();
   const groups = [...new Set(form.picked.map(groupOf))];
-  const pool = DATA.members.filter(m => matchOf(m, form.filter));
+  const pool = DATA.members.filter(m => matchOf(m, form.filters));
 
   const addBlock = form.adding ? `
     <div class="grp">
       <input type="text" id="n-name" value="${esc(form.adding.name)}" placeholder="名前">
       <div class="picks" style="margin-top:8px">
-        ${STATUSES.map(s => `<button class="pick ${form.adding.status === s ? 'on' : ''}" data-act="n-status" data-v="${s}">${s}</button>`).join('')}
-        ${GENDERS.map(g => `<button class="pick ${form.adding.gender === g ? 'on' : ''}" data-act="n-gender" data-v="${g}">${g}</button>`).join('')}
+        ${STATUSES.map(s => `<button type="button" class="pick ${form.adding.status === s ? 'on' : ''}" data-act="n-status" data-v="${s}">${s}</button>`).join('')}
+        ${GENDERS.map(g => `<button type="button" class="pick ${form.adding.gender === g ? 'on' : ''}" data-act="n-gender" data-v="${g}">${g}</button>`).join('')}
       </div>
       <div class="inline" style="margin-top:10px">
-        <button class="primary" data-act="n-save">追加して選択</button>
-        <button class="ghost" style="margin-top:0" data-act="n-cancel">やめる</button>
+        <button type="button" class="primary" data-act="n-save">追加して選択</button>
+        <button type="button" class="ghost" style="margin-top:0" data-act="n-cancel">やめる</button>
       </div>
     </div>` : '';
 
   return `
+  <div style="position:sticky; top:0; z-index:6; background:var(--bg); padding:0 0 10px; margin-top:-4px;">
+    <button type="button" class="primary" data-act="save" style="margin-top:0; box-shadow:0 4px 14px rgba(16,32,46,.12);">${form.id ? '編集を保存' : 'この立替を登録'}</button>
+  </div>
   <div class="card pad">
-    ${form.id ? `<div class="grp" style="margin:0 0 6px"><div class="head"><b>立替を編集中</b><button class="link" style="padding:0" data-act="edit-cancel">やめる</button></div></div>` : ''}
+    ${form.id ? `<div class="grp" style="margin:0 0 6px"><div class="head"><b>立替を編集中</b><button type="button" class="link" style="padding:0" data-act="edit-cancel">やめる</button></div></div>` : ''}
     <label>日付</label>
     <input type="date" id="f-date" value="${form.date}">
     <label>内容</label>
@@ -386,17 +401,19 @@ function renderAdd() {
     <label>支払った総額（空欄でもOK）</label>
     <input type="number" id="f-total" inputmode="numeric" value="${form.total}" placeholder="未入力のままでも登録できます">
 
-    <label>回収する相手</label>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin:16px 0 6px;">
+      <label style="margin:0">回収する相手</label>
+      <button type="button" class="link" style="padding:0; font-weight:700; color:var(--ink); font-size:13px;" data-act="n-open">＋ メンバーを追加</button>
+    </div>
     ${form.picked.length ? `<div class="picks" style="margin-bottom:10px">
-      ${form.picked.map(x => `<button class="pick on" data-act="pick" data-name="${esc(x)}">${esc(x)} ×</button>`).join('')}
+      ${form.picked.map(x => `<button type="button" class="pick on" data-act="pick" data-name="${esc(x)}">${esc(x)} ×</button>`).join('')}
     </div>` : ''}
     <div class="filter-grid">
-      ${ATTR_BOXES.map(b => `<button type="button" class="filter-box ${form.filter === b ? 'on' : ''}" data-act="f-box" data-v="${b}">${b}</button>`).join('')}
+      ${ATTR_BOXES.map(b => `<button type="button" class="filter-box ${(form.filters || []).includes(b) ? 'on' : ''}" data-act="f-box" data-v="${b}">${b}</button>`).join('')}
     </div>
     <div class="picks">
       ${(form.showAllPool ? pool : pool.slice(0, 6)).map(m => `<button type="button" class="pick ${form.picked.includes(m.name) ? 'on' : ''}" data-act="pick" data-name="${esc(m.name)}">${esc(m.name)}</button>`).join('')}
       ${pool.length > 6 ? `<button type="button" class="pick more" data-act="pool-toggle">${form.showAllPool ? '閉じる ▲' : `もっと開く（＋${pool.length - 6}人）▼`}</button>` : ''}
-      <button type="button" class="pick add" data-act="n-open">＋ 新しい人</button>
     </div>
     ${pool.length ? '' : '<p class="note">この絞り込みに当てはまる人がいません。</p>'}
     ${addBlock}
@@ -453,13 +470,13 @@ function refreshAmounts() {
 
 function renderMembers() {
   return `
-  <div class="card pad">
-    <label>メンバーを追加</label>
+  <div class="card pad" style="position:sticky; top:0; z-index:5; box-shadow:0 4px 16px rgba(16,32,46,.08);">
+    <label style="margin-top:0">メンバーを追加</label>
     <div class="inline">
       <input type="text" id="m-name" placeholder="名前">
       <button class="primary" data-act="m-add">追加</button>
     </div>
-    <p class="note">属性（区分や性別）は追加したあとに設定できます。</p>
+    <p class="note" style="margin-bottom:0">属性（区分や性別）は追加したあとに設定できます。</p>
   </div>
   <h2>登録済み（${DATA.members.length}人）</h2>
   ${DATA.members.length ? (() => {
@@ -570,10 +587,19 @@ document.addEventListener('click', e => {
       break;
 
     // 登録フォーム
-    case 'f-box':
-      form.filter = form.filter === d.v ? '' : d.v;
+    case 'f-box': {
+      const v = d.v;
+      if (!form.filters) form.filters = [];
+      if (form.filters.includes(v)) {
+        form.filters = form.filters.filter(x => x !== v);
+      } else {
+        if (STATUSES.includes(v)) form.filters = form.filters.filter(x => !STATUSES.includes(x));
+        if (GENDERS.includes(v)) form.filters = form.filters.filter(x => !GENDERS.includes(x));
+        form.filters.push(v);
+      }
       form.showAllPool = false;
       render(); break;
+    }
     case 'pool-toggle':
       form.showAllPool = !form.showAllPool;
       render(); break;

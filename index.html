@@ -453,7 +453,7 @@ function renderMembers() {
       <input type="text" id="m-name" placeholder="名前">
       <button class="primary" data-act="m-add">追加</button>
     </div>
-    <p class="note">属性は追加したあとに設定できます。</p>
+    <p class="note">属性（区分や性別）は追加したあとに設定できます。</p>
   </div>
   <h2>登録済み（${DATA.members.length}人）</h2>
   ${DATA.members.length ? '<div class="stack" id="m-list">' + DATA.members.map(m => m.name === (editing && editing.oldName) ? editRow(m) : `

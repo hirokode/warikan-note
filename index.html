@@ -312,10 +312,13 @@ const matchOf = (m, filters) => {
   return filters.every(f => m.status === f || m.gender === f);
 };
 
+let toastTimer = null;
 function toast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg; t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2200);
+  clearTimeout(toastTimer);
+  // 長い案内文は読み切れるように表示時間を延ばす
+  toastTimer = setTimeout(() => t.classList.remove('show'), msg.length > 30 ? 6000 : 2200);
 }
 
 function spin(on) {
@@ -332,7 +335,19 @@ function post_(body) {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify(body),
-  }).then(r => r.json());
+  }).then(r => r.text().then(text => {
+    // Apps Script は、設定が合っていないと JSON ではなく Google のHTMLページを返す。
+    // そのまま .json() すると意味の分からないエラーになるので、ここで原因を言い当てる。
+    try {
+      return JSON.parse(text);
+    } catch (_) {
+      console.error('サーバーの応答がJSONではありません', r.status, text.slice(0, 500));
+      const hint = (r.status === 404 || /ページが見つかりません|not found/i.test(text))
+        ? 'Apps Script 側がまだ更新されていない可能性があります（clasp push と再デプロイが必要）。'
+        : 'ウェブアプリの公開設定が「全員」になっているか確認してください。';
+      throw new Error('サーバーが正しく応答しませんでした（' + r.status + '）。' + hint);
+    }
+  }));
 }
 
 function rpc(fn, args) {
@@ -418,7 +433,7 @@ function authSubmit_(action, body, okMsg) {
     .catch(err => {
       authBusy = false; spin(false);
       console.error(action + ' failed:', err);
-      toast('サーバーに接続できませんでした');
+      toast((err && err.message) ? err.message : 'サーバーに接続できませんでした');
     });
 }
 

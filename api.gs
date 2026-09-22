@@ -617,3 +617,57 @@ function moveDataTo(from, to) {
   Logger.log(msg);
   return msg;
 }
+
+/**
+ * パスワードの再設定（管理者用）。引数なしで実行できる。
+ *
+ * 手順：
+ *   1. スクリプト プロパティに次の2つを追加する
+ *        RESET_EMAIL … 対象のメールアドレス
+ *        RESET_PW    … 新しいパスワード（8文字以上）
+ *   2. この関数を ▶ で実行する
+ *   3. 2つのプロパティは自動的に消える
+ *
+ * パスワードをコードに書かずに済むので、git にも実行履歴にも残らない。
+ */
+function resetPassword() {
+  const props = PropertiesService.getScriptProperties();
+  const email = props.getProperty('RESET_EMAIL');
+  const pw = props.getProperty('RESET_PW');
+
+  if (!email || !pw) {
+    throw new Error('先にスクリプト プロパティへ RESET_EMAIL と RESET_PW を設定してください');
+  }
+  if (String(pw).length < MIN_PASSWORD) {
+    throw new Error('新しいパスワードは' + MIN_PASSWORD + '文字以上にしてください');
+  }
+
+  const found = findUserRow_(email);
+  if (!found) {
+    throw new Error(email + ' のアカウントが見つかりません');
+  }
+
+  const uid = String(found.values[0]);
+  const salt = Utilities.getUuid();
+  const hash = hashPassword_(String(pw), salt, HASH_ITERATIONS);
+  const sh = sysSheet_('users');
+  sh.getRange(found.row, 4, 1, 3).setValues([[salt, hash, HASH_ITERATIONS]]);
+
+  // 念のため、このアカウントの古いログイン状態はすべて無効にする
+  const ses = sysSheet_('sessions');
+  const sv = ses.getDataRange().getValues();
+  let killed = 0;
+  for (let i = sv.length - 1; i >= 1; i--) {
+    if (String(sv[i][1]) === uid) { ses.deleteRow(i + 1); killed++; }
+  }
+
+  // 使い終わったら必ず消す（パスワードを残さないため）
+  props.deleteProperty('RESET_EMAIL');
+  props.deleteProperty('RESET_PW');
+
+  const msg = uid + '（' + email + '）のパスワードを再設定しました。\n'
+            + '古いログイン状態 ' + killed + '件を無効にしました。\n'
+            + 'RESET_EMAIL と RESET_PW は削除済みです。新しいパスワードでログインしてください。';
+  Logger.log(msg);
+  return msg;
+}

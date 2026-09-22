@@ -259,8 +259,9 @@ function profile_(uid) {
 function signup_(name, email, password, invite) {
   const props = PropertiesService.getScriptProperties();
   const code = props.getProperty('INVITE_CODE');
-  if (!code) throw new Error('招待コードが未設定です。管理者に連絡してください');
-  if (String(invite || '').trim() !== code) throw new Error('招待コードが違います');
+  if (!String(code).trim()) throw new Error('招待コードが未設定です。管理者に連絡してください');
+  // 保存された値の前後に空白が紛れ込んでいても一致するようにする（コピペ事故対策）
+  if (String(invite || '').trim() !== String(code).trim()) throw new Error('招待コードが違います');
 
   const nm = String(name || '').trim();
   const em = normalizeEmail_(email);

@@ -214,6 +214,11 @@
   .empty { color: var(--sub); text-align: center; padding: 34px 16px; font-size: 14px; line-height: 1.9; }
   .note { font-size: 12px; color: var(--sub); margin: 12px 6px 0; }
 
+  /* ログイン画面のエラー表示 */
+  .auth-error { background: var(--owed-soft); color: var(--owed); border: 1px solid #EBC9D6;
+                border-radius: 11px; padding: 12px 14px; font-size: 13px; margin-top: 16px; line-height: 1.75; }
+  .primary[disabled], .ghost[disabled] { opacity: .55; cursor: default; }
+
   /* 操作ボタン（一覧の編集・削除、均等で割る など） */
   .btn { border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 10px; padding: 9px 16px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
   .btn.on { background: var(--ink); border-color: var(--ink); color: #fff; }
@@ -278,6 +283,8 @@ let TOKEN = '';          // ログインの合鍵。端末の中だけに保存�
 let ME = null;           // { uid, name, email }。null ならログイン画面を出す
 let authView = 'login';  // 'login' | 'signup'
 let authBusy = false;
+let authError = '';      // ログイン画面に出し続けるエラー文
+let authForm = { name: '', email: '', pass: '', invite: '' };   // 描き直しても入力が消えないように
 try { TOKEN = localStorage.getItem('wn_token') || ''; } catch (_) {}
 
 let DATA = { members: [], advances: [] };
@@ -419,38 +426,51 @@ function drain() {
 // ---------- ログイン・登録・ログアウト ----------
 function authSubmit_(action, body, okMsg) {
   if (authBusy) return;
-  authBusy = true; spin(true);
+  authBusy = true; authError = '';
+  render();          // ボタンを「送信中…」に変えて、押したことが目に見えるようにする
+  spin(true);
   post_(Object.assign({ action: action }, body))
     .then(j => {
       authBusy = false;
-      if (!j.ok) { spin(false); toast(j.error || 'うまくいきませんでした'); return; }
+      if (!j.ok) {
+        spin(false);
+        authError = j.error || 'うまくいきませんでした';
+        render();    // エラーは消さずに画面に残す
+        return;
+      }
       TOKEN = j.data.token;
       ME = j.data.profile;
       try { localStorage.setItem('wn_token', TOKEN); } catch (_) {}
+      authForm = { name: '', email: '', pass: '', invite: '' };
       TAB = 'owed';
       call('getData', [], okMsg);
     })
     .catch(err => {
       authBusy = false; spin(false);
       console.error(action + ' failed:', err);
-      toast((err && err.message) ? err.message : 'サーバーに接続できませんでした');
+      authError = (err && err.message) ? err.message : 'サーバーに接続できませんでした';
+      render();
     });
 }
 
+function authFail_(msg) { authError = msg; render(); }
+
 function doLogin() {
-  const email = (document.getElementById('a-email').value || '').trim();
-  const pass = document.getElementById('a-pass').value || '';
-  if (!email || !pass) { toast('メールアドレスとパスワードを入力してください'); return; }
+  const email = (authForm.email || '').trim();
+  const pass = authForm.pass || '';
+  if (!email || !pass) { authFail_('メールアドレスとパスワードを入力してください'); return; }
   authSubmit_('login', { email: email, password: pass }, 'ログインしました');
 }
 
 function doSignup() {
-  const name = (document.getElementById('a-name').value || '').trim();
-  const email = (document.getElementById('a-email').value || '').trim();
-  const pass = document.getElementById('a-pass').value || '';
-  const invite = (document.getElementById('a-invite').value || '').trim();
-  if (!name || !email || !pass || !invite) { toast('すべての項目を入力してください'); return; }
-  if (pass.length < 8) { toast('パスワードは8文字以上にしてください'); return; }
+  const name = (authForm.name || '').trim();
+  const email = (authForm.email || '').trim();
+  const pass = authForm.pass || '';
+  const invite = (authForm.invite || '').trim();
+  if (!name)   { authFail_('名前を入力してください'); return; }
+  if (!email)  { authFail_('メールアドレスを入力してください'); return; }
+  if (!invite) { authFail_('招待コードを入力してください'); return; }
+  if (pass.length < 8) { authFail_('パスワードは8文字以上にしてください（いまは' + pass.length + '文字です）'); return; }
   authSubmit_('signup', { name: name, email: email, password: pass, invite: invite },
               'ようこそ、' + name + 'さん');
 }
@@ -533,15 +553,16 @@ function renderAuth() {
   </div>
   <div class="card pad">
     ${isSignup ? `<label>名前</label>
-    <input type="text" id="a-name" placeholder="アプリ内で表示される名前">` : ''}
+    <input type="text" id="a-name" value="${esc(authForm.name)}" placeholder="アプリ内で表示される名前">` : ''}
     <label>メールアドレス</label>
-    <input type="text" id="a-email" inputmode="email" autocomplete="username" placeholder="you@example.com">
+    <input type="text" id="a-email" inputmode="email" autocomplete="username" value="${esc(authForm.email)}" placeholder="you@example.com">
     <label>パスワード</label>
-    <input type="password" id="a-pass" autocomplete="${isSignup ? 'new-password' : 'current-password'}" placeholder="${isSignup ? '8文字以上' : ''}">
+    <input type="password" id="a-pass" autocomplete="${isSignup ? 'new-password' : 'current-password'}" value="${esc(authForm.pass)}" placeholder="${isSignup ? '8文字以上' : ''}">
     ${isSignup ? `<label>招待コード</label>
-    <input type="text" id="a-invite" placeholder="管理者から伝えられた合言葉">` : ''}
-    <button class="primary" data-act="${isSignup ? 'do-signup' : 'do-login'}">${isSignup ? 'アカウントを作成' : 'ログイン'}</button>
-    <button class="ghost" data-act="auth-toggle">${isSignup ? 'すでにアカウントをお持ちの方はこちら' : 'アカウントをお持ちでない方はこちら'}</button>
+    <input type="text" id="a-invite" value="${esc(authForm.invite)}" placeholder="管理者から伝えられた合言葉">` : ''}
+    ${authError ? `<div class="auth-error">${esc(authError)}</div>` : ''}
+    <button class="primary" data-act="${isSignup ? 'do-signup' : 'do-login'}" ${authBusy ? 'disabled' : ''}>${authBusy ? '送信中…' : (isSignup ? 'アカウントを作成' : 'ログイン')}</button>
+    <button class="ghost" data-act="auth-toggle" ${authBusy ? 'disabled' : ''}>${isSignup ? 'すでにアカウントをお持ちの方はこちら' : 'アカウントをお持ちでない方はこちら'}</button>
   </div>
   ${isSignup ? `<p class="note" style="margin:16px 6px; line-height:1.9;">
     ・パスワードは元に戻せない形に変換して保存します。<b>他のサービスと同じパスワードは使わないでください。</b><br>
@@ -964,6 +985,10 @@ function editRow(m) {
 document.addEventListener('input', e => {
   const t = e.target;
   if (editing && t.id === 'e-name') editing.name = t.value;
+  if (t.id === 'a-name')   authForm.name = t.value;
+  if (t.id === 'a-email')  authForm.email = t.value;
+  if (t.id === 'a-pass')   authForm.pass = t.value;
+  if (t.id === 'a-invite') authForm.invite = t.value;
   if (!form) return;
   if (t.id === 'f-date') form.date = t.value;
   if (t.id === 'f-title') form.title = t.value;
@@ -998,7 +1023,9 @@ document.addEventListener('click', e => {
 
     // ログイン画面
     case 'auth-toggle':
-      authView = authView === 'signup' ? 'login' : 'signup'; render(); break;
+      if (authBusy) break;
+      authView = authView === 'signup' ? 'login' : 'signup';
+      authError = ''; render(); break;
     case 'do-login':
       doLogin(); break;
     case 'do-signup':

@@ -529,3 +529,91 @@ function deleteAdvance(uid, advanceId) {
     return getData(uid);
   });
 }
+
+// ===================================================================
+// 調査と修復（エディタから手で実行する。画面からは呼べない）
+// ===================================================================
+
+/**
+ * いま何がどうなっているかを一覧で出す。
+ * パスワードやトークンは表示しない。
+ */
+function diagnose() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const props = PropertiesService.getScriptProperties();
+  const out = [];
+
+  out.push('■ シート一覧（行数は見出しを除いたデータ件数）');
+  ss.getSheets().forEach(sh => {
+    const rows = Math.max(0, sh.getLastRow() - 1);
+    out.push('  ' + sh.getName() + '  … ' + rows + '件');
+  });
+
+  out.push('');
+  out.push('■ 登録済みのアカウント');
+  const uv = sysSheet_('users').getDataRange().getValues();
+  if (uv.length < 2) {
+    out.push('  （まだありません）');
+  } else {
+    for (let i = 1; i < uv.length; i++) {
+      out.push('  ' + uv[i][0] + ' : ' + uv[i][1] + ' <' + uv[i][2] + '>');
+    }
+  }
+
+  out.push('');
+  out.push('■ 採番カウンタ UID_SEQ = ' + props.getProperty('UID_SEQ'));
+  out.push('■ PEPPER 設定済み = ' + (props.getProperty('PEPPER') ? 'はい' : 'いいえ'));
+  out.push('■ INVITE_CODE 設定済み = ' + (props.getProperty('INVITE_CODE') ? 'はい' : 'いいえ'));
+
+  const msg = out.join('\n');
+  Logger.log(msg);
+  return msg;
+}
+
+/**
+ * データの入ったシートを、指定したアカウントのものとして引き継ぐ。
+ *
+ *   from … 引き継ぎ元。旧バージョンのシート（メンバー／立替／回収明細）なら '' を渡す。
+ *          すでに 'u1' が付いているなら 'u1' を渡す。
+ *   to   … 引き継ぎ先のユーザーID（例 'u2'）
+ *
+ * 例：moveDataTo('', 'u1')     旧シートを u1 のものにする
+ *     moveDataTo('u1', 'u2')   u1 のシートを u2 のものにする
+ *
+ * 引き継ぎ先にデータが入っている場合は、安全のため何もせず中止する。
+ */
+function moveDataTo(from, to) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!to) throw new Error('引き継ぎ先のユーザーIDを指定してください（例 "u1"）');
+  const log = [];
+
+  // 先に全部を点検してから動かす（途中で止まって半端な状態にしないため）
+  const plan = [];
+  Object.keys(SHEET_NAMES).forEach(key => {
+    const base = SHEET_NAMES[key];
+    const srcName = from ? base + '_' + from : base;
+    const dstName = base + '_' + to;
+    const src = ss.getSheetByName(srcName);
+    const dst = ss.getSheetByName(dstName);
+
+    if (!src) { log.push('× ' + srcName + ' が見つかりません（このシートは飛ばします）'); return; }
+    if (src.getName() === dstName) { log.push('・' + dstName + ' はすでに引き継ぎ済みです'); return; }
+    if (dst && dst.getLastRow() > 1) {
+      throw new Error(dstName + ' にすでに ' + (dst.getLastRow() - 1) + '件のデータがあります。'
+        + '上書きを避けるため中止しました。内容を確認してください。');
+    }
+    plan.push({ src: src, dst: dst, srcName: srcName, dstName: dstName });
+  });
+
+  if (!plan.length) { const m = log.join('\n') || '動かすものがありませんでした'; Logger.log(m); return m; }
+
+  plan.forEach(item => {
+    if (item.dst) { ss.deleteSheet(item.dst); log.push('・空だった ' + item.dstName + ' を削除しました'); }
+    item.src.setName(item.dstName);
+    log.push('○ ' + item.srcName + ' → ' + item.dstName + '（中身はそのまま）');
+  });
+
+  const msg = log.join('\n');
+  Logger.log(msg);
+  return msg;
+}

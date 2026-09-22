@@ -140,7 +140,7 @@
   /* ダークモード適応 */
   [data-theme="dark"] nav { background: rgba(30, 41, 59, 0.94); border-color: rgba(51, 65, 85, 0.8); }
   [data-theme="dark"] nav button.on { background: #334155; color: #F8FAFC; }
-  [data-theme="dark"] input[type=text], [data-theme="dark"] input[type=number], [data-theme="dark"] input[type=date], [data-theme="dark"] select { background: #0F172A; border-color: #334155; color: #F8FAFC; }
+  [data-theme="dark"] input[type=text], [data-theme="dark"] input[type=password], [data-theme="dark"] input[type=number], [data-theme="dark"] input[type=date], [data-theme="dark"] select { background: #0F172A; border-color: #334155; color: #F8FAFC; }
   [data-theme="dark"] .pick, [data-theme="dark"] .filter-box, [data-theme="dark"] .btn, [data-theme="dark"] .ghost { background: #1E293B; border-color: #334155; color: #F8FAFC; }
   [data-theme="dark"] .pick.on, [data-theme="dark"] .filter-box.on, [data-theme="dark"] .btn.on { background: #F8FAFC; border-color: #F8FAFC; color: #0F172A; }
   [data-theme="dark"] .primary { background: #F8FAFC; color: #0F172A; }
@@ -173,7 +173,7 @@
   .pad { padding: 18px; }
   label { display: block; font-size: 13px; color: var(--sub); margin: 16px 0 6px; }
   .pad > label:first-child { margin-top: 0; }
-  input[type=text], input[type=number], input[type=date], select {
+  input[type=text], input[type=password], input[type=number], input[type=date], select {
     width: 100%; font: inherit; font-size: 16px; padding: 11px 13px;
     border: 1px solid var(--line); border-radius: 11px; background: #FAFBFC; color: var(--ink);
   }
@@ -270,6 +270,16 @@ const GENDERS = ['男', '女'];
 const FILTERS = [...STATUSES, ...GENDERS, '属性なし'];   // 人員プールの絞り込み候補
 const ATTR_BOXES = ['社会人', '学生', '男', '女'];
 
+// ===== Apps Script（データ置き場）の住所 =====
+// デプロイし直してURLが変わったときは、ここだけを書き換える。
+const API_URL = 'https://script.google.com/macros/s/AKfycbywrtCeltcZDvzsxMw3Rj9_8hGSEwDIQp09iYtnFIdhyQQsjZcCzy9xOGgpGwKEpu4g7w/exec';
+
+let TOKEN = '';          // ログインの合鍵。端末の中だけに保存する
+let ME = null;           // { uid, name, email }。null ならログイン画面を出す
+let authView = 'login';  // 'login' | 'signup'
+let authBusy = false;
+try { TOKEN = localStorage.getItem('wn_token') || ''; } catch (_) {}
+
 let DATA = { members: [], advances: [] };
 let TAB = 'owed';
 const openPeople = new Set();
@@ -313,13 +323,35 @@ function spin(on) {
   if (el) el.style.display = on ? 'block' : 'none';
 }
 
+// ---------- サーバーとのやりとり ----------
+// GitHub Pages に置いた画面から呼ぶので、google.script.run ではなく fetch を使う。
+// Content-Type を text/plain にしているのは、ブラウザの事前問い合わせ（preflight）を
+// 発生させないため。これがないと Apps Script 側が応答できない。
+function post_(body) {
+  return fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(body),
+  }).then(r => r.json());
+}
+
+function rpc(fn, args) {
+  return post_({ action: fn, args: args || [], token: TOKEN }).then(j => {
+    if (!j.ok) throw new Error(j.error || '通信に失敗しました');
+    return j.data;
+  });
+}
+
+// ログインが切れたことを表すエラーかどうか
+const isAuthError = err => /ログイン/.test((err && err.message) ? err.message : '');
+
 // 結果を待ってから画面を作るもの（最初の読み込み、エラーからの復帰）
 function call(fn, args, doneMsg, after) {
   spin(true);
   // 10秒返事がなければ「固まっている」ことを画面に出す（原因切り分け用）
   const watchdog = setTimeout(() => toast(fn + ' からの応答がありません（10秒）'), 10000);
-  google.script.run
-    .withSuccessHandler(data => {
+  rpc(fn, args)
+    .then(data => {
       clearTimeout(watchdog);
       spin(false);
       DATA = data;
@@ -327,12 +359,13 @@ function call(fn, args, doneMsg, after) {
       render();
       if (doneMsg) toast(doneMsg);
     })
-    .withFailureHandler(err => {
+    .catch(err => {
       clearTimeout(watchdog);
       spin(false);
-      console.error('google.script.run ' + fn + ' failed:', err);
+      console.error(fn + ' failed:', err);
+      if (isAuthError(err)) { signOut(true); return; }
       toast((err && err.message) ? err.message : String(err));
-    })[fn](...args);
+    });
 }
 
 // ---------- 保存待ちの行列 ----------
@@ -352,19 +385,74 @@ function drain() {
   if (sending || !queue.length) return;
   sending = true; spin(true);
   const job = queue[0];
-  google.script.run
-    .withSuccessHandler(data => {
+  rpc(job.fn, job.args)
+    .then(data => {
       queue.shift(); sending = false;
       // 行列が空になった時だけ、サーバーの内容に揃え直す（IDの確定など）
       if (!queue.length) { spin(false); DATA = data; render(); }
       drain();
     })
-    .withFailureHandler(err => {
+    .catch(err => {
       console.error('保存に失敗:', job.fn, err);
       queue = []; sending = false; spin(false);
+      if (isAuthError(err)) { signOut(true); return; }
       toast('保存できませんでした：' + ((err && err.message) ? err.message : String(err)));
       call('getData', []);   // 画面をサーバーの状態に戻す
-    })[job.fn](...job.args);
+    });
+}
+
+// ---------- ログイン・登録・ログアウト ----------
+function authSubmit_(action, body, okMsg) {
+  if (authBusy) return;
+  authBusy = true; spin(true);
+  post_(Object.assign({ action: action }, body))
+    .then(j => {
+      authBusy = false;
+      if (!j.ok) { spin(false); toast(j.error || 'うまくいきませんでした'); return; }
+      TOKEN = j.data.token;
+      ME = j.data.profile;
+      try { localStorage.setItem('wn_token', TOKEN); } catch (_) {}
+      TAB = 'owed';
+      call('getData', [], okMsg);
+    })
+    .catch(err => {
+      authBusy = false; spin(false);
+      console.error(action + ' failed:', err);
+      toast('サーバーに接続できませんでした');
+    });
+}
+
+function doLogin() {
+  const email = (document.getElementById('a-email').value || '').trim();
+  const pass = document.getElementById('a-pass').value || '';
+  if (!email || !pass) { toast('メールアドレスとパスワードを入力してください'); return; }
+  authSubmit_('login', { email: email, password: pass }, 'ログインしました');
+}
+
+function doSignup() {
+  const name = (document.getElementById('a-name').value || '').trim();
+  const email = (document.getElementById('a-email').value || '').trim();
+  const pass = document.getElementById('a-pass').value || '';
+  const invite = (document.getElementById('a-invite').value || '').trim();
+  if (!name || !email || !pass || !invite) { toast('すべての項目を入力してください'); return; }
+  if (pass.length < 8) { toast('パスワードは8文字以上にしてください'); return; }
+  authSubmit_('signup', { name: name, email: email, password: pass, invite: invite },
+              'ようこそ、' + name + 'さん');
+}
+
+function signOut(expired) {
+  const old = TOKEN;
+  TOKEN = ''; ME = null;
+  DATA = { members: [], advances: [] };
+  queue = []; sending = false;
+  form = null; editing = null;
+  try { localStorage.removeItem('wn_token'); } catch (_) {}
+  authView = 'login';
+  spin(false);
+  render();
+  toast(expired ? 'ログインの期限が切れました。もう一度ログインしてください' : 'ログアウトしました');
+  // サーバー側の合鍵も無効にする（失敗しても画面上は問題ない）
+  if (old) post_({ action: 'logout', token: old }).catch(() => {});
 }
 
 // 保存が残ったまま閉じようとしたら引き止める
@@ -405,12 +493,45 @@ const pickedSum = () => form.picked.reduce((x, p) => x + (Number(form.amounts[p]
 
 // ---------- 描画 ----------
 function render() {
-  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === TAB));
+  const nav = document.querySelector('nav');
   const v = document.getElementById('view');
+  if (!ME) {                                   // 未ログインのときは下のバーも隠す
+    if (nav) nav.style.display = 'none';
+    v.innerHTML = renderAuth();
+    return;
+  }
+  if (nav) nav.style.display = '';
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === TAB));
   if (TAB === 'owed') v.innerHTML = renderOwed();
   if (TAB === 'list') v.innerHTML = renderList();
   if (TAB === 'add') v.innerHTML = renderAdd();
   if (TAB === 'settings') v.innerHTML = renderSettings();
+}
+
+function renderAuth() {
+  const isSignup = authView === 'signup';
+  return `
+  <div style="text-align:center; margin:30px 0 22px;">
+    <img src="${APP_ICON_B64}" alt="" style="width:76px; height:76px; border-radius:19px;">
+    <h1 style="font-size:20px; font-weight:700; margin:14px 0 2px;">立替回収トラッカー</h1>
+    <p class="note" style="margin:0;">${isSignup ? 'アカウントを作成します' : 'ログインしてください'}</p>
+  </div>
+  <div class="card pad">
+    ${isSignup ? `<label>名前</label>
+    <input type="text" id="a-name" placeholder="アプリ内で表示される名前">` : ''}
+    <label>メールアドレス</label>
+    <input type="text" id="a-email" inputmode="email" autocomplete="username" placeholder="you@example.com">
+    <label>パスワード</label>
+    <input type="password" id="a-pass" autocomplete="${isSignup ? 'new-password' : 'current-password'}" placeholder="${isSignup ? '8文字以上' : ''}">
+    ${isSignup ? `<label>招待コード</label>
+    <input type="text" id="a-invite" placeholder="管理者から伝えられた合言葉">` : ''}
+    <button class="primary" data-act="${isSignup ? 'do-signup' : 'do-login'}">${isSignup ? 'アカウントを作成' : 'ログイン'}</button>
+    <button class="ghost" data-act="auth-toggle">${isSignup ? 'すでにアカウントをお持ちの方はこちら' : 'アカウントをお持ちでない方はこちら'}</button>
+  </div>
+  ${isSignup ? `<p class="note" style="margin:16px 6px; line-height:1.9;">
+    ・パスワードは元に戻せない形に変換して保存します。<b>他のサービスと同じパスワードは使わないでください。</b><br>
+    ・登録した立替の内容は、このアプリの管理者（スプレッドシートの持ち主）が見られます。
+  </p>` : ''}`;
 }
 
 function renderOwed() {
@@ -729,7 +850,14 @@ function renderSettingsMenu() {
       <span>配色テーマ（ライト / ダーク）・フォント書式</span>
     </div>
     <span class="menu-arrow">›</span>
-  </div>`;
+  </div>
+  <div class="menu-card">
+    <div class="menu-info">
+      <b>👤 アカウント</b>
+      <span>${esc(ME ? ME.name : '')}（${esc(ME ? ME.email : '')}）</span>
+    </div>
+  </div>
+  <button class="ghost danger" data-act="do-logout" style="margin-top:16px;">ログアウト</button>`;
 }
 
 function renderMembersWithBack() {
@@ -852,6 +980,17 @@ document.addEventListener('click', e => {
   if (!el) return;
   const d = el.dataset;
   switch (d.act) {
+
+    // ログイン画面
+    case 'auth-toggle':
+      authView = authView === 'signup' ? 'login' : 'signup'; render(); break;
+    case 'do-login':
+      doLogin(); break;
+    case 'do-signup':
+      doSignup(); break;
+    case 'do-logout':
+      if (confirm('ログアウトしますか？')) signOut(false);
+      break;
 
     // 設定
     case 'set-nav':
@@ -1174,14 +1313,18 @@ function endDrag(commit) {
 document.addEventListener('pointerup', () => endDrag(true));
 document.addEventListener('pointercancel', () => endDrag(false));
 
-// データ到着前でも画面を出す（真っ白＋緑バーだけ、を防ぐ）
+// 起動：まずログイン画面を出し、前回の合鍵が残っていれば自動で入り直す
 render();
-if (typeof google === 'undefined' || !google.script || !google.script.run) {
-  document.getElementById('loading').style.display = 'none';
-  document.getElementById('view').innerHTML =
-    '<div class="empty">サーバーに接続できません。<br>Apps Script のウェブアプリURL（末尾が /exec）から開いてください。</div>';
-} else {
-  call('getData', []);
+if (TOKEN) {
+  spin(true);
+  rpc('me', [])
+    .then(prof => { ME = prof; spin(false); call('getData', []); })
+    .catch(() => {
+      spin(false);
+      TOKEN = '';
+      try { localStorage.removeItem('wn_token'); } catch (_) {}
+      render();
+    });
 }
 </script>
 </body>

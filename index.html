@@ -994,7 +994,44 @@ function renderMembers() {
 function renderSettings() {
   if (settingsView === 'members') return renderMembersWithBack();
   if (settingsView === 'appearance') return renderAppearance();
+  if (settingsView === 'groups') return renderGroups();
   return renderSettingsMenu();
+}
+
+function renderGroups() {
+  const gs = groupList();
+  return `
+  <div style="display:flex; align-items:center; gap:8px; margin:4px 4px 14px;">
+    <button type="button" class="btn" data-act="set-back" style="padding:6px 12px; font-size:13px;">← 設定に戻る</button>
+    <h2 style="margin:0; font-size:16px; font-weight:700; color:var(--ink);">グループ管理</h2>
+  </div>
+  <div class="card pad">
+    <label style="margin-top:0">グループを追加</label>
+    <div class="inline">
+      <input type="text" id="g-name" placeholder="例：フレアー、ゼミ">
+      <button class="primary" data-act="g-add">追加</button>
+    </div>
+    <p class="note" style="margin-bottom:0">所属するメンバーは「メンバー管理」の編集で選べます（複数所属できます）。</p>
+  </div>
+  <h2>グループ（${gs.length}件）</h2>
+  ${gs.length ? '<div class="stack">' + gs.map(g => (groupEdit && groupEdit.oldName === g) ? `
+    <div class="card pad" style="padding:12px 14px">
+      <input type="text" id="g-edit" value="${esc(groupEdit.name)}">
+      <div class="inline" style="margin-top:10px">
+        <button class="primary" data-act="g-save">保存</button>
+        <button class="ghost" style="margin-top:0" data-act="g-cancel">やめる</button>
+      </div>
+      <button class="ghost danger" data-act="g-delete" data-v="${esc(g)}">${esc(g)}を削除</button>
+      <p class="note">削除しても、メンバーや過去の立替は消えません（所属から外れるだけです）。</p>
+    </div>` : `
+    <div class="card pad" style="padding:12px 14px">
+      <div class="row" style="margin:0">
+        <span class="who"><b style="font-weight:700">${esc(g)}</b> <span class="tag">${membersOfGroup(g).length}人</span>
+          <div style="font-size:12px; color:var(--sub); margin-top:2px;">${membersOfGroup(g).map(esc).join('、') || 'メンバー未設定'}</div>
+        </span>
+        <button class="btn" data-act="g-edit" data-v="${esc(g)}">編集</button>
+      </div>
+    </div>`).join('') + '</div>' : '<div class="empty">まだグループがありません。</div>'}`;
 }
 
 function renderSettingsMenu() {
@@ -1006,6 +1043,13 @@ function renderSettingsMenu() {
     <div class="menu-info">
       <b>👥 メンバー管理</b>
       <span>メンバーの追加・編集・並び替え（${DATA.members.length}人）</span>
+    </div>
+    <span class="menu-arrow">›</span>
+  </div>
+  <div class="menu-card" data-act="set-nav" data-to="groups">
+    <div class="menu-info">
+      <b>🏷 グループ管理</b>
+      <span>グループの追加・編集・削除（${groupList().length}件）</span>
     </div>
     <span class="menu-arrow">›</span>
   </div>
@@ -1101,6 +1145,10 @@ function editRow(m) {
     <div class="picks">${STATUSES.map(s => `<button class="pick ${editing.status === s ? 'on' : ''}" data-act="e-status" data-v="${s}">${s}</button>`).join('')}</div>
     <label>性別</label>
     <div class="picks">${GENDERS.map(g => `<button class="pick ${editing.gender === g ? 'on' : ''}" data-act="e-gender" data-v="${g}">${g}</button>`).join('')}</div>
+    <label>所属グループ（複数選べます）</label>
+    ${groupList().length ? groupList().map(g => `
+      <label class="check" style="margin-top:8px; color:var(--ink)"><input type="checkbox" data-act="e-group" data-v="${esc(g)}" ${(editing.groups || []).includes(g) ? 'checked' : ''}>${esc(g)}</label>`).join('')
+      : '<p class="note" style="margin:4px 2px 0">グループは「設定 → グループ管理」で作れます。</p>'}
     <div class="inline" style="margin-top:16px">
       <button class="primary" data-act="e-save">保存</button>
       <button class="ghost" style="margin-top:0" data-act="e-cancel">やめる</button>
@@ -1114,6 +1162,7 @@ function editRow(m) {
 document.addEventListener('input', e => {
   const t = e.target;
   if (editing && t.id === 'e-name') editing.name = t.value;
+  if (groupEdit && t.id === 'g-edit') groupEdit.name = t.value;
   if (t.id === 'a-name')   authForm.name = t.value;
   if (t.id === 'a-email')  authForm.email = t.value;
   if (t.id === 'a-pass')   authForm.pass = t.value;
@@ -1168,7 +1217,7 @@ document.addEventListener('click', e => {
       settingsView = d.to;
       render(); scrollTop(); break;
     case 'set-back':
-      settingsView = 'menu';
+      settingsView = 'menu'; groupEdit = null;
       render(); scrollTop(); break;
     case 'set-theme':
       try { localStorage.setItem('flair_theme', d.v); } catch (_) {}
@@ -1342,7 +1391,7 @@ document.addEventListener('click', e => {
       if (!m.name) { toast('名前を入力してください'); break; }
       if (DATA.members.some(x => x.name === m.name)) { toast(m.name + ' はすでに登録されています'); break; }
       save(() => {
-        DATA.members.push({ name: m.name, status: m.status || '', gender: m.gender || '' });
+        DATA.members.push({ name: m.name, status: m.status || '', gender: m.gender || '', groups: [] });
         form.adding = null;
         if (!form.picked.includes(m.name)) form.picked.push(m.name);
         if (form.showGroup) applyGroup(groupOf(m.name));
@@ -1400,16 +1449,55 @@ document.addEventListener('click', e => {
       const name = (document.getElementById('m-name').value || '').trim();
       if (!name) { toast('名前を入力してください'); break; }
       if (DATA.members.some(x => x.name === name)) { toast(name + ' はすでに登録されています'); break; }
-      save(() => DATA.members.push({ name, status: '', gender: '' }),
+      save(() => DATA.members.push({ name, status: '', gender: '', groups: [] }),
            'addMember', [{ name, status: '', gender: '' }], `${name}を追加しました`);
       break;
     }
     case 'm-edit': {
       showAllMembers = true;
       const m = member(d.name);
-      editing = { oldName: m.name, name: m.name, status: m.status, gender: m.gender };
+      editing = { oldName: m.name, name: m.name, status: m.status, gender: m.gender, groups: [...(m.groups || [])] };
       render(); break;
     }
+    case 'e-group':
+      editing.groups = editing.groups.includes(d.v) ? editing.groups.filter(x => x !== d.v) : [...editing.groups, d.v];
+      render(); break;
+
+    // グループ
+    case 'g-add': {
+      const name = (document.getElementById('g-name').value || '').trim();
+      if (!name) { toast('グループ名を入力してください'); break; }
+      if (name.includes(',')) { toast('グループ名に「,」は使えません'); break; }
+      if (groupList().includes(name)) { toast(name + ' はすでにあります'); break; }
+      save(() => { DATA.groups = [...groupList(), name]; }, 'addGroup', [name], `${name}を追加しました`);
+      break;
+    }
+    case 'g-edit':
+      groupEdit = { oldName: d.v, name: d.v }; render(); break;
+    case 'g-cancel':
+      groupEdit = null; render(); break;
+    case 'g-save': {
+      const { oldName } = groupEdit;
+      const name = (document.getElementById('g-edit').value || '').trim();
+      if (!name) { toast('グループ名を入力してください'); break; }
+      if (name.includes(',')) { toast('グループ名に「,」は使えません'); break; }
+      if (name === oldName) { groupEdit = null; render(); break; }
+      if (groupList().includes(name)) { toast(name + ' はすでにあります'); break; }
+      save(() => {
+        DATA.groups = groupList().map(g => g === oldName ? name : g);
+        DATA.members.forEach(m => { m.groups = (m.groups || []).map(g => g === oldName ? name : g); });
+        groupEdit = null;
+      }, 'renameGroup', [oldName, name], '保存しました');
+      break;
+    }
+    case 'g-delete':
+      if (confirm(`グループ「${d.v}」を削除しますか？\nメンバーや過去の立替は消えません。`))
+        save(() => {
+          DATA.groups = groupList().filter(g => g !== d.v);
+          DATA.members.forEach(m => { m.groups = (m.groups || []).filter(g => g !== d.v); });
+          groupEdit = null;
+        }, 'deleteGroup', [d.v], '削除しました');
+      break;
     case 'e-status':
       editing.status = editing.status === d.v ? '' : d.v; render(); break;
     case 'e-gender':
@@ -1421,7 +1509,7 @@ document.addEventListener('click', e => {
       if (!payload.name) { toast('名前を入力してください'); break; }
       save(() => {
         const mm = DATA.members.find(x => x.name === payload.oldName);
-        if (mm) { mm.name = payload.name; mm.status = payload.status || ''; mm.gender = payload.gender || ''; }
+        if (mm) { mm.name = payload.name; mm.status = payload.status || ''; mm.gender = payload.gender || ''; mm.groups = payload.groups || []; }
         if (payload.name !== payload.oldName) {
           DATA.advances.forEach(a => a.shares.forEach(x => { if (x.person === payload.oldName) x.person = payload.name; }));
         }

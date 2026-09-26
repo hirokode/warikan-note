@@ -21,7 +21,7 @@ const SYS_HEADERS = {
   sessions: ['トークンハッシュ', 'ユーザーID', '発行日時', '有効期限'],
 };
 
-const HASH_ITERATIONS = 2000;   // パスワードを混ぜ返す回数。多いほど破られにくいが、ログインが遅くなる
+const HASH_ITERATIONS = 200;    // パスワードを混ぜ返す回数。多いほど破られにくいが、ログインが遅くなる
 const SESSION_DAYS    = 90;     // ログイン状態を保つ日数
 const MIN_PASSWORD    = 8;      // パスワードの最低文字数
 
@@ -297,7 +297,16 @@ function login_(email, password) {
 
   const uid = String(found.values[0]);
   ensureUserSheets_(uid);
-  sysSheet_('users').getRange(found.row, 8).setValue(new Date());
+  const sh = sysSheet_('users');
+
+  // 反復回数が変わっていたら、新しい回数で再ハッシュして保存する（次回以降のログインが速くなる）
+  if (iter !== HASH_ITERATIONS) {
+    const newSalt = Utilities.getUuid();
+    const newHash = hashPassword_(pw, newSalt, HASH_ITERATIONS);
+    sh.getRange(found.row, 4, 1, 3).setValues([[newSalt, newHash, HASH_ITERATIONS]]);
+  }
+
+  sh.getRange(found.row, 8).setValue(new Date());
   const s = issueSession_(uid);
   return {
     token: s.token, expires: s.expires,

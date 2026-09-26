@@ -2,17 +2,21 @@
  * 立替回収トラッカー（GAS側）v3 — 複数ユーザー対応
  *
  * 画面は GitHub Pages に置き、ここは API（データの受け渡し窓口）として動く。
- * ユーザーごとに「メンバー_u1」「立替_u1」「回収明細_u1」のようにシートを分けて持つ。
+ * ユーザーごとに「メンバー_u1」「立替_u1」「回収明細_u1」「グループ_u1」のようにシートを分けて持つ。
  *
  * 初回に1回だけ setupMultiUser() を実行すること。
  */
 
-const SHEET_NAMES = { members: 'メンバー', advances: '立替', shares: '回収明細' };
+const SHEET_NAMES = { members: 'メンバー', advances: '立替', shares: '回収明細', groups: 'グループ' };
+// 別アプリがこのシートを列名で読むため、既存の列名・並びは変えない。新しい列は必ず末尾に足す
 const HEADERS = {
-  members:  ['名前', '区分', '性別'],
-  advances: ['ID', '日付', '内容', '総額', '割る人数(自分含む)', 'メモ', '登録日時'],
-  shares:   ['ID', '立替ID', '相手', '金額', '回収済み', '回収日'],
+  members:  ['名前', '区分', '性別', '所属グループ'],
+  advances: ['ID', '日付', '内容', '総額', '割る人数(自分含む)', 'メモ', '登録日時', '支払手段'],
+  shares:   ['ID', '立替ID', '相手', '金額', '回収済み', '回収日', '入金手段'],
+  groups:   ['グループ名'],
 };
+const PAY_IN_METHODS  = ['PayPay', '銀行', '現金', '楽天ペイ', 'その他'];   // 回収したときの入金手段
+const PAY_OUT_METHODS = ['カード', 'PayPay', '現金', 'その他'];             // 立て替えたときの支払手段
 
 // ログイン情報を入れる管理用シート
 const SYS_NAMES = { users: 'ユーザー', sessions: 'セッション' };
@@ -83,7 +87,10 @@ function ensureSystemSheets_() {
   });
 }
 
-/** そのユーザー用の3シートを（なければ）作る */
+/**
+ * そのユーザー用のシートを（なければ）作る。
+ * 既存シートに新しい列の見出しが無ければ、末尾に見出しだけを足す（既存の列・データには触れない）
+ */
 function ensureUserSheets_(uid) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   Object.keys(SHEET_NAMES).forEach(key => {
@@ -96,9 +103,16 @@ function ensureUserSheets_(uid) {
     } else if (sh.getLastRow() === 0) {
       sh.appendRow(HEADERS[key]);
       sh.setFrozenRows(1);
+    } else {
+      const width = sh.getLastColumn();
+      const head = sh.getRange(1, 1, 1, width).getValues()[0].map(String);
+      const missing = HEADERS[key].filter(h => head.indexOf(h) < 0);
+      if (missing.length) sh.getRange(1, width + 1, 1, missing.length).setValues([missing]);
     }
+    ensured_[name] = true;
   });
 }
+const ensured_ = {};   // この実行中に見出しを点検済みのシート名
 
 // ===================================================================
 // 通信の入口
@@ -144,8 +158,11 @@ function route_(req) {
     case 'deleteMember':   return deleteMember(uid, args[0]);
     case 'addAdvance':     return addAdvance(uid, args[0]);
     case 'updateAdvance':  return updateAdvance(uid, args[0]);
-    case 'setPaid':        return setPaid(uid, args[0], args[1]);
+    case 'setPaid':        return setPaid(uid, args[0], args[1], args[2]);
     case 'deleteAdvance':  return deleteAdvance(uid, args[0]);
+    case 'addGroup':       return addGroup(uid, args[0]);
+    case 'renameGroup':    return renameGroup(uid, args[0], args[1]);
+    case 'deleteGroup':    return deleteGroup(uid, args[0]);
     case 'me':             return profile_(uid);
     default: throw new Error('知らない操作です: ' + action);
   }
@@ -344,16 +361,44 @@ function sheet_(key, uid) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const name = SHEET_NAMES[key] + '_' + uid;
   let sh = ss.getSheetByName(name);
-  if (!sh || sh.getLastColumn() < HEADERS[key].length) {
+  if (!sh || !ensured_[name]) {
     ensureUserSheets_(uid);
     sh = ss.getSheetByName(name);
   }
   return sh;
 }
 function rows_(key, uid) {
+  return table_(key, uid).rows;
+}
+/** データ行と「見出し名 → 列の位置(0始まり)」を返す。末尾に足した列は位置を決め打ちせず見出し名で探す */
+function table_(key, uid) {
   const values = sheet_(key, uid).getDataRange().getValues();
-  values.shift(); // 見出し行を除く
-  return values.filter(r => r[0] !== '');
+  const head = values.shift() || []; // 見出し行を除く
+  const idx = {};
+  head.forEach((h, i) => { if (h !== '' && !(h in idx)) idx[String(h)] = i; });
+  return { rows: values.filter(r => r[0] !== ''), idx: idx, width: head.length };
+}
+/** 見出し名をキーにした値から、シートの列幅ぶんの1行を作る */
+function rowFor_(t, obj) {
+  const row = new Array(t.width).fill('');
+  Object.keys(obj).forEach(k => { if (k in t.idx) row[t.idx[k]] = obj[k]; });
+  return row;
+}
+function cell_(r, t, name) {
+  return (name in t.idx) ? r[t.idx[name]] : '';
+}
+function checkMethod_(v, list, label) {
+  const s = String(v || '').trim();
+  if (s && list.indexOf(s) < 0) throw new Error(label + 'が正しくありません: ' + s);
+  return s;
+}
+/** 所属グループ（カンマ区切り）⇔ 配列 */
+function splitGroups_(v) {
+  return String(v || '').split(',').map(s => s.trim()).filter(Boolean);
+}
+function joinGroups_(arr) {
+  const seen = {};
+  return (arr || []).map(s => String(s).trim()).filter(s => s && !seen[s] && (seen[s] = true)).join(',');
 }
 function date_(d) {
   return d instanceof Date ? Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy-MM-dd') : String(d || '');
@@ -378,33 +423,43 @@ function memberRowIndex_(uid, name) {
 
 /** 全データをまとめて返す */
 function getData(uid) {
-  const members = rows_('members', uid).map(r => ({
+  const mt = table_('members', uid);
+  const members = mt.rows.map(r => ({
     name: String(r[0]), status: String(r[1] || ''), gender: String(r[2] || ''),
+    groups: splitGroups_(cell_(r, mt, '所属グループ')),
   }));
-  const shares = rows_('shares', uid).map(r => ({
+  const st = table_('shares', uid);
+  const shares = st.rows.map(r => ({
     id: String(r[0]), advanceId: String(r[1]), person: String(r[2]),
     amount: Number(r[3]), paid: r[4] === true, paidDate: date_(r[5]),
+    method: String(cell_(r, st, '入金手段') || ''),
   }));
-  const advances = rows_('advances', uid).map(r => ({
+  const at = table_('advances', uid);
+  const advances = at.rows.map(r => ({
     id: String(r[0]), date: date_(r[1]), title: String(r[2]),
     total: r[3] === '' ? '' : Number(r[3]), headcount: Number(r[4]), memo: String(r[5] || ''),
+    payMethod: String(cell_(r, at, '支払手段') || ''),
     shares: shares.filter(s => s.advanceId === String(r[0])),
   })).sort((a, b) => b.date.localeCompare(a.date));
-  return { members, advances };
+  const groups = rows_('groups', uid).map(r => String(r[0]));
+  return { members, advances, groups };
 }
 
-/** メンバー追加　m = {name, status, gender} */
+/** メンバー追加　m = {name, status, gender, groups?} */
 function addMember(uid, m) {
   const name = String(m.name || '').trim();
   if (!name) throw new Error('名前を入力してください');
   return withLock_(() => {
     if (memberRowIndex_(uid, name)) throw new Error(name + ' はすでに登録されています');
-    sheet_('members', uid).appendRow([name, m.status || '', m.gender || '']);
+    const t = table_('members', uid);
+    sheet_('members', uid).appendRow(rowFor_(t, {
+      '名前': name, '区分': m.status || '', '性別': m.gender || '', '所属グループ': joinGroups_(m.groups),
+    }));
     return getData(uid);
   });
 }
 
-/** メンバー編集　m = {oldName, name, status, gender}（名前を変えると過去の明細も追随） */
+/** メンバー編集　m = {oldName, name, status, gender, groups?}（名前を変えると過去の明細も追随） */
 function updateMember(uid, m) {
   const oldName = String(m.oldName || '');
   const name = String(m.name || '').trim();
@@ -413,7 +468,12 @@ function updateMember(uid, m) {
     const row = memberRowIndex_(uid, oldName);
     if (!row) throw new Error(oldName + ' が見つかりません');
     if (name !== oldName && memberRowIndex_(uid, name)) throw new Error(name + ' はすでに登録されています');
-    sheet_('members', uid).getRange(row, 1, 1, 3).setValues([[name, m.status || '', m.gender || '']]);
+    const msh = sheet_('members', uid);
+    msh.getRange(row, 1, 1, 3).setValues([[name, m.status || '', m.gender || '']]);
+    if (Array.isArray(m.groups)) {
+      const t = table_('members', uid);
+      msh.getRange(row, t.idx['所属グループ'] + 1).setValue(joinGroups_(m.groups));
+    }
     if (name !== oldName) {
       const sh = sheet_('shares', uid);
       const values = sh.getDataRange().getValues();
@@ -436,7 +496,8 @@ function reorderMembers(uid, names) {
     names.forEach(n => { if (byName[n]) { ordered.push(byName[n]); delete byName[n]; } });
     body.forEach(r => { if (byName[String(r[0])]) ordered.push(r); }); // 指定漏れは末尾へ
     if (ordered.length) {
-      sh.getRange(2, 1, ordered.length, 3).setValues(ordered.map(r => [r[0], r[1] || '', r[2] || '']));
+      // 所属グループなど末尾の列も一緒に動かすため、行の全列を書き戻す
+      sh.getRange(2, 1, ordered.length, ordered[0].length).setValues(ordered);
     }
     return getData(uid);
   });
@@ -454,68 +515,87 @@ function deleteMember(uid, name) {
 
 /**
  * 立替を登録
- * p = { date, title, total, headcount, memo, shares: [{person, amount}] }
+ * p = { date, title, total, headcount, memo, payMethod, shares: [{person, amount}] }
  */
 function addAdvance(uid, p) {
   if (!p.title) throw new Error('内容を入力してください');
   if (!p.shares || !p.shares.length) throw new Error('回収する相手と金額を入力してください');
+  const payMethod = checkMethod_(p.payMethod, PAY_OUT_METHODS, '支払手段');
   return withLock_(() => {
     const id = newId_();
-    sheet_('advances', uid).appendRow([id, p.date, p.title, p.total, p.headcount, p.memo || '', new Date()]);
-    const rows = p.shares.map(s => [newId_(), id, s.person, Number(s.amount), false, '']);
+    const at = table_('advances', uid);
+    sheet_('advances', uid).appendRow(rowFor_(at, {
+      'ID': id, '日付': p.date, '内容': p.title, '総額': p.total, '割る人数(自分含む)': p.headcount,
+      'メモ': p.memo || '', '登録日時': new Date(), '支払手段': payMethod,
+    }));
+    const st = table_('shares', uid);
+    const rows = p.shares.map(s => rowFor_(st, {
+      'ID': newId_(), '立替ID': id, '相手': s.person, '金額': Number(s.amount), '回収済み': false, '回収日': '', '入金手段': '',
+    }));
     const sh = sheet_('shares', uid);
-    sh.getRange(sh.getLastRow() + 1, 1, rows.length, 6).setValues(rows);
+    sh.getRange(sh.getLastRow() + 1, 1, rows.length, st.width).setValues(rows);
     return getData(uid);
   });
 }
 
 /**
  * 立替を編集（回収済みの状態は、同じ相手ならそのまま引き継ぐ）
- * p = { id, date, title, total, headcount, memo, shares: [{person, amount}] }
+ * p = { id, date, title, total, headcount, memo, payMethod, shares: [{person, amount}] }
  */
 function updateAdvance(uid, p) {
   if (!p.id) throw new Error('編集する立替が指定されていません');
   if (!p.title) throw new Error('内容を入力してください');
   if (!p.shares || !p.shares.length) throw new Error('回収する相手と金額を入力してください');
+  const payMethod = checkMethod_(p.payMethod, PAY_OUT_METHODS, '支払手段');
   return withLock_(() => {
     const adSh = sheet_('advances', uid);
     const av = adSh.getDataRange().getValues();
     let row = 0;
     for (let i = 1; i < av.length; i++) if (String(av[i][0]) === String(p.id)) { row = i + 1; break; }
     if (!row) throw new Error('編集する立替が見つかりません');
-    // ID(1列目)と登録日時(7列目)は触らず、2〜6列目だけ更新
+    // ID(1列目)と登録日時(7列目)は触らず、2〜6列目と支払手段だけ更新
     adSh.getRange(row, 2, 1, 5).setValues([[p.date, p.title, p.total, p.headcount, p.memo || '']]);
+    const at = table_('advances', uid);
+    adSh.getRange(row, at.idx['支払手段'] + 1).setValue(payMethod);
 
-    // 旧い回収明細をいったん外し、相手が同じなら 明細ID・回収済み・回収日 を引き継ぐ
+    // 旧い回収明細をいったん外し、相手が同じなら 明細ID・回収済み・回収日・入金手段 を引き継ぐ
     const shSh = sheet_('shares', uid);
+    const st = table_('shares', uid);
     const sv = shSh.getDataRange().getValues();
     const kept = {};
     for (let i = sv.length - 1; i >= 1; i--) {
       if (String(sv[i][1]) === String(p.id)) {
-        kept[String(sv[i][2])] = [String(sv[i][0]), sv[i][4], sv[i][5]];
+        kept[String(sv[i][2])] = { id: String(sv[i][0]), paid: sv[i][4], date: sv[i][5], method: cell_(sv[i], st, '入金手段') };
         shSh.deleteRow(i + 1);
       }
     }
     const rows = p.shares.map(s => {
       const old = kept[s.person];
-      return old ? [old[0], p.id, s.person, Number(s.amount), old[1], old[2]]
-                 : [newId_(), p.id, s.person, Number(s.amount), false, ''];
+      return rowFor_(st, old
+        ? { 'ID': old.id, '立替ID': p.id, '相手': s.person, '金額': Number(s.amount), '回収済み': old.paid, '回収日': old.date, '入金手段': old.method }
+        : { 'ID': newId_(), '立替ID': p.id, '相手': s.person, '金額': Number(s.amount), '回収済み': false, '回収日': '', '入金手段': '' });
     });
-    shSh.getRange(shSh.getLastRow() + 1, 1, rows.length, 6).setValues(rows);
+    shSh.getRange(shSh.getLastRow() + 1, 1, rows.length, st.width).setValues(rows);
     return getData(uid);
   });
 }
 
-/** 回収済み／未回収の切り替え（複数まとめてOK） */
-function setPaid(uid, shareIds, paid) {
+/**
+ * 回収済み／未回収の切り替え（複数まとめてOK）
+ * method … 回収済みにするときの入金手段。未回収に戻すときは入金手段も消す
+ */
+function setPaid(uid, shareIds, paid, method) {
+  const m = paid ? checkMethod_(method, PAY_IN_METHODS, '入金手段') : '';
   return withLock_(() => {
     const target = {};
     shareIds.forEach(id => target[id] = true);
     const sh = sheet_('shares', uid);
+    const methodCol = table_('shares', uid).idx['入金手段'] + 1;
     const values = sh.getDataRange().getValues();
     for (let i = 1; i < values.length; i++) {
       if (target[String(values[i][0])]) {
         sh.getRange(i + 1, 5, 1, 2).setValues([[paid, paid ? new Date() : '']]);
+        sh.getRange(i + 1, methodCol).setValue(m);
       }
     }
     return getData(uid);
@@ -535,6 +615,66 @@ function deleteAdvance(uid, advanceId) {
     for (let i = av.length - 1; i >= 1; i--) {
       if (String(av[i][0]) === advanceId) adSh.deleteRow(i + 1);
     }
+    return getData(uid);
+  });
+}
+
+// ---------- グループ（メンバーの集まり。登録時に参加者を一括で選ぶためのもの） ----------
+
+function groupName_(name) {
+  const nm = String(name || '').trim();
+  if (!nm) throw new Error('グループ名を入力してください');
+  if (nm.indexOf(',') >= 0) throw new Error('グループ名に「,」は使えません');
+  return nm;
+}
+function groupRowIndex_(uid, name) {
+  const values = sheet_('groups', uid).getDataRange().getValues();
+  for (let i = 1; i < values.length; i++) if (String(values[i][0]) === name) return i + 1;
+  return 0;
+}
+/** 全メンバーの所属グループを書き換える　fn(配列) → 新しい配列 */
+function rewriteMemberGroups_(uid, fn) {
+  const sh = sheet_('members', uid);
+  const t = table_('members', uid);
+  const col = t.idx['所属グループ'];
+  const values = sh.getDataRange().getValues();
+  for (let i = 1; i < values.length; i++) {
+    const before = String(values[i][col] || '');
+    const after = joinGroups_(fn(splitGroups_(before)));
+    if (after !== before) sh.getRange(i + 1, col + 1).setValue(after);
+  }
+}
+
+/** グループ追加 */
+function addGroup(uid, name) {
+  const nm = groupName_(name);
+  return withLock_(() => {
+    if (groupRowIndex_(uid, nm)) throw new Error(nm + ' はすでにあります');
+    sheet_('groups', uid).appendRow([nm]);
+    return getData(uid);
+  });
+}
+
+/** グループ名の変更（メンバーの所属グループも追随） */
+function renameGroup(uid, oldName, name) {
+  const nm = groupName_(name);
+  return withLock_(() => {
+    const row = groupRowIndex_(uid, String(oldName));
+    if (!row) throw new Error(oldName + ' が見つかりません');
+    if (nm !== oldName && groupRowIndex_(uid, nm)) throw new Error(nm + ' はすでにあります');
+    sheet_('groups', uid).getRange(row, 1).setValue(nm);
+    rewriteMemberGroups_(uid, gs => gs.map(g => g === oldName ? nm : g));
+    return getData(uid);
+  });
+}
+
+/** グループ削除（メンバーの所属からも外す。メンバー自体は消さない） */
+function deleteGroup(uid, name) {
+  return withLock_(() => {
+    const row = groupRowIndex_(uid, String(name));
+    if (!row) throw new Error(name + ' が見つかりません');
+    sheet_('groups', uid).deleteRow(row);
+    rewriteMemberGroups_(uid, gs => gs.filter(g => g !== name));
     return getData(uid);
   });
 }

@@ -813,25 +813,28 @@ function renderList() {
   return '<h2>立替の記録</h2><div class="stack">' + DATA.advances.map(a => {
     const done = a.shares.every(s => s.paid);
     const rest = a.shares.filter(s => !s.paid).reduce((x, s) => x + s.amount, 0);
+    const got = a.shares.filter(s => s.paid).reduce((x, s) => x + s.amount, 0);
     return `
     <div class="card adv">
       <div class="adv-top">
         <div>
-          <div class="adv-title">${esc(a.title)}</div>
+          <div class="adv-title">${esc(a.title)}${a.payMethod ? `<span class="pay-tag">${esc(a.payMethod)}</span>` : ''}</div>
           <div class="adv-meta">${a.date}${a.total ? '　総額' + yen(a.total) : ''}　${a.headcount}人${a.memo ? '　' + esc(a.memo) : ''}</div>
         </div>
         <span class="state ${done ? 'done' : ''}">${done ? '回収済み' : '残 ' + yen(rest)}</span>
       </div>
+      <div class="amt-line"><span class="ok">回収済み ${yen(got)}</span><span class="ng">未回収 ${yen(rest)}</span></div>
       <div class="chips">
-        ${a.shares.map(s => `<button class="chip ${s.paid ? 'paid' : ''}" data-act="flip" data-id="${s.id}" data-paid="${s.paid}">${esc(s.person)}　${yen(s.amount)}</button>`).join('')}
+        ${a.shares.map(s => `<button class="chip ${s.paid ? 'paid' : ''}" data-act="flip" data-id="${s.id}" data-paid="${s.paid}">${esc(s.person)}　${yen(s.amount)}${s.paid && s.method ? `（${esc(s.method)}）` : ''}</button>`).join('')}
       </div>
-      <div class="acts">
+      <div class="acts" style="flex-wrap:wrap">
+        <button type="button" class="btn" data-act="bill-open" data-id="${a.id}">請求テキスト</button>
         <button type="button" class="btn" data-act="copy" data-id="${a.id}">コピーして作成</button>
         <button type="button" class="btn" data-act="edit" data-id="${a.id}">編集</button>
         <button type="button" class="btn danger" data-act="delete" data-id="${a.id}" data-title="${esc(a.title)}">削除</button>
       </div>
     </div>`;
-  }).join('') + '</div><p class="note">名前をタップするたびに、回収済みと未回収が切り替わります。</p>';
+  }).join('') + '</div><p class="note">名前をタップすると、入金手段を選んで回収済みにできます。回収済みの名前をもう一度タップすると未回収に戻ります。</p>';
 }
 
 // 均等割り（端数は切り上げ）。「均等で割る」ボタンを押した時だけ走る

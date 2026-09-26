@@ -553,13 +553,13 @@ const sortAdvances = () => DATA.advances.sort((a, b) => String(b.date).localeCom
 const scrollTop = () => { const v = document.getElementById('view'); if (v) v.scrollTop = 0; };
 
 function newForm() {
-  return { id: null, date: today(), title: '', total: '', memo: '', picked: [],
+  return { id: null, date: today(), title: '', total: '', memo: '', payMethod: '', picked: [],
            filters: [], showAllPool: false, showGroup: false, includeMe: true, groupAmt: {}, amounts: {}, adding: null };
 }
 // 既存の立替を、登録フォームに読み込んで編集状態にする
 function formFromAdvance(a) {
   const f = newForm();
-  f.id = a.id; f.date = a.date; f.title = a.title; f.total = a.total; f.memo = a.memo;
+  f.id = a.id; f.date = a.date; f.title = a.title; f.total = a.total; f.memo = a.memo; f.payMethod = a.payMethod || '';
   f.picked = a.shares.map(s => s.person);
   a.shares.forEach(s => f.amounts[s.person] = s.amount);
   f.includeMe = a.headcount > a.shares.length;
@@ -881,11 +881,18 @@ function renderAdd() {
     <input type="text" id="f-title" value="${esc(form.title)}" placeholder="例：焼肉、旅行の宿代">
     <label>支払った総額（空欄でもOK）</label>
     <input type="number" id="f-total" inputmode="numeric" value="${form.total}" placeholder="未入力のままでも登録できます">
+    <label>支払手段</label>
+    <div class="picks">
+      ${PAY_OUT_METHODS.map(m => `<button type="button" class="pick ${form.payMethod === m ? 'on' : ''}" data-act="f-pay" data-v="${esc(m)}">${esc(m)}</button>`).join('')}
+    </div>
 
     <div style="display:flex; justify-content:space-between; align-items:center; margin:16px 0 6px;">
       <label style="margin:0">回収する相手</label>
       <button type="button" class="link" style="padding:0; font-weight:700; color:var(--ink); font-size:13px;" data-act="n-open">＋ メンバーを追加</button>
     </div>
+    ${groupList().length ? `<div class="picks" style="margin-bottom:10px">
+      ${groupList().map(g => `<button type="button" class="pick add" data-act="f-team" data-v="${esc(g)}">＋ ${esc(g)}（${membersOfGroup(g).length}人）</button>`).join('')}
+    </div>` : ''}
     ${form.picked.length ? `<div class="picks" style="margin-bottom:10px">
       ${form.picked.map(x => `<button type="button" class="pick on" data-act="pick" data-name="${esc(x)}">${esc(x)} ×</button>`).join('')}
     </div>` : ''}
@@ -1298,6 +1305,19 @@ document.addEventListener('click', e => {
     case 'pool-toggle':
       form.showAllPool = !form.showAllPool;
       render(); break;
+    case 'f-pay':
+      form.payMethod = form.payMethod === d.v ? '' : d.v;   // もう一度タップで外せる
+      render(); break;
+    case 'f-team': {
+      // グループのメンバーを参加者にまとめて入れる（入っている人はそのまま。外すのは個別に）
+      const names = membersOfGroup(d.v).filter(n => !form.picked.includes(n));
+      if (!membersOfGroup(d.v).length) { toast(d.v + ' にはまだメンバーがいません（設定で所属を選べます）'); break; }
+      form.picked = [...form.picked, ...names];
+      if (form.showGroup) names.forEach(n => applyGroup(groupOf(n)));
+      render();
+      toast(names.length ? `${d.v}の${names.length}人を追加しました` : `${d.v}の全員がすでに入っています`);
+      break;
+    }
     case 'pick':
       form.picked = form.picked.includes(d.name) ? form.picked.filter(x => x !== d.name) : [...form.picked, d.name];
       if (form.showGroup) applyGroup(groupOf(d.name));   // 金額は自動で入れない（空のまま）
@@ -1333,7 +1353,7 @@ document.addEventListener('click', e => {
         date: form.date, title: (form.title || '').trim(),
         total: form.total === '' ? '' : Number(form.total),   // 空欄のまま登録できる
         headcount: form.picked.length + (form.includeMe ? 1 : 0),
-        memo: (form.memo || '').trim(), shares,
+        memo: (form.memo || '').trim(), payMethod: form.payMethod || '', shares,
       };
       if (!payload.title) { toast('内容を入力してください'); break; }
       if (!shares.length) { toast('回収する相手と金額を入力してください'); break; }
@@ -1345,18 +1365,20 @@ document.addEventListener('click', e => {
             const was = {};
             a.shares.forEach(x => was[x.person] = x);   // 回収済みの状態を引き継ぐ
             a.date = payload.date; a.title = payload.title; a.total = payload.total;
-            a.headcount = payload.headcount; a.memo = payload.memo;
+            a.headcount = payload.headcount; a.memo = payload.memo; a.payMethod = payload.payMethod;
             a.shares = shares.map(x => was[x.person]
               ? { ...was[x.person], amount: x.amount }
-              : { id: tmpId(), advanceId: a.id, person: x.person, amount: x.amount, paid: false, paidDate: '' });
+              : { id: tmpId(), advanceId: a.id, person: x.person, amount: x.amount, paid: false, paidDate: '', method: '' });
           }
         } else {
           const id = tmpId();
           DATA.advances.push({
             id, date: payload.date, title: payload.title, total: payload.total,
-            headcount: payload.headcount, memo: payload.memo,
-            shares: shares.map(x => ({ id: tmpId(), advanceId: id, person: x.person, amount: x.amount, paid: false, paidDate: '' })),
+            headcount: payload.headcount, memo: payload.memo, payMethod: payload.payMethod,
+            shares: shares.map(x => ({ id: tmpId(), advanceId: id, person: x.person, amount: x.amount, paid: false, paidDate: '', method: '' })),
           });
+          // 登録したらすぐLINEに貼れる請求テキストを出す
+          sheet = { type: 'bill', heading: '登録しました。LINE用の請求テキスト', text: billText(payload, shares) };
         }
         sortAdvances();
         selectedDate = payload.date;
